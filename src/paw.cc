@@ -494,7 +494,11 @@ int lua_filter_and_sort(lua_State* L) {
 
   std::vector<CompletionItem> output;
   if (option.keyword.empty()) {
-    output = std::move(items);
+    for (auto& item : items) {
+      if (item.kind != CompletionItemKind::Text && item.kind != CompletionItemKind::Snippet) {
+        output.push_back(item);
+      }
+    }
   } else {
     for (auto& item : items) {
       if (item.match_once && item.cost <= option.max_cost) {
