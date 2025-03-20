@@ -169,7 +169,7 @@ local function make_completion_request_param(start, client)
     triggerKind = trigger_kind,
     triggerCharacter = trigger_char,
   }
-  params.position.character = start
+  -- params.position.character = start
   return params
 end
 
