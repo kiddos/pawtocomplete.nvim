@@ -39,15 +39,6 @@ local context = {
   on_preview = nil,
 }
 
--- Validate menu items
-local function validate_items(items)
-  local validated_items = {}
-  for _, item in ipairs(items) do
-    local validated_item = vim.tbl_deep_extend('force', {}, default_config.item_defaults, item)
-    table.insert(validated_items, validated_item)
-  end
-  return validated_items
-end
 
 local function create_popup()
   local buf = api.nvim_create_buf(false, true)
@@ -59,16 +50,14 @@ local function create_popup()
   local num_items = #context.items
   local height = math.min(num_items, config.window.max_height)
 
-  local width = config.window.width
-  local max_item_width = 0
-  if width == 0 then
-    width = 0
-    for _, item in ipairs(context.items) do
-      max_item_width = math.max(max_item_width, #item.label + 3)
-    end
-    width = math.min(width, vim.o.columns - 4)
-    width = math.min(width, max_item_width)
+  local width = config.window.width or 60
+  local max_item_width = width
+  for _, item in ipairs(context.items) do
+    max_item_width = math.max(max_item_width, #item.label + 3)
   end
+  local win_width = vim.api.nvim_win_get_width(0)
+  local pos = api.nvim_win_get_cursor(0)
+  width = math.min(width, win_width - pos[2])
 
   local win = api.nvim_open_win(buf, false, {
     relative = config.window.relative,
@@ -112,24 +101,11 @@ local function create_preview_window(_)
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
   -- Calculate position (above or below the main popup)
-  local popup_pos = api.nvim_win_get_position(context.win)
   local popup_height = api.nvim_win_get_height(context.win)
   local popup_width = api.nvim_win_get_width(context.win)
   local doc_height = math.min(#lines, 3)
   local doc_width = popup_width
-
-  -- Decide whether to place above or below the popup
   local row = popup_height
-  -- local col = 0
-  -- if popup_pos[1] + popup_height + doc_height < vim.o.lines - 2 then
-  --   -- Place below
-  --   row = popup_height
-  -- else
-  --   -- Place above
-  --   row = -1
-  -- end
-
-  -- print(vim.inspect(popup_pos), popup_height, popup_width, row, col)
 
   local win = api.nvim_open_win(buf, false, {
     relative = 'win',
@@ -358,7 +334,7 @@ function M.open(items, opt)
   end
 
   local config = vim.tbl_deep_extend('force', {}, default_config, opt.config or {})
-  context.items = validate_items(items)
+  context.items = items
   context.on_select = opt.on_select
   context.on_preview = opt.on_preview
   context.config = config
