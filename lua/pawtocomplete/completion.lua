@@ -49,25 +49,9 @@ local function find_completion_base_word(start)
   end
 end
 
-local function insert_text_at_cursor(text, left)
-  local bufnr = api.nvim_get_current_buf()
-  local pos = api.nvim_win_get_cursor(0)
-  local row = pos[1]
-  local right = pos[2]
-
-  local current_line = api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1]
-
-  local before_cursor = string.sub(current_line, 1, left)
-  local after_cursor = string.sub(current_line, right + 1)
-
-  local content = before_cursor .. text .. after_cursor
-  local lines = vim.split(content, '\n')
-
-  api.nvim_buf_set_lines(bufnr, row - 1, row, false, lines)
-  api.nvim_win_set_cursor(0, { row, left + #text })
-end
-
-local function extmark_at_cursor(text, left)
+local function extmark_at_cursor(item)
+  local text = item.insertText or item.label
+  local character = paw.table_get(item, { 'textEdit', 'range', 'start', 'character' })
   local bufnr = api.nvim_get_current_buf()
   local row = api.nvim_win_get_cursor(0)[1]
 
@@ -76,7 +60,7 @@ local function extmark_at_cursor(text, left)
     context.preview_id = nil
   end
 
-  context.preview_id = api.nvim_buf_set_extmark(bufnr, context.ns_id, row - 1, left, {
+  context.preview_id = api.nvim_buf_set_extmark(bufnr, context.ns_id, row - 1, character, {
     virt_text = { { text, "Normal" } },
     virt_text_pos = 'overlay',
     priority = 10,
@@ -95,7 +79,12 @@ local function extmark_at_cursor(text, left)
   })
 end
 
-local function apply_text_edit(text_edit)
+local function apply_text_edit(item)
+  local text_edit = paw.table_get(item, { 'textEdit' })
+  if not text_edit then
+    return
+  end
+
   local bufnr = api.nvim_get_current_buf()
   vim.lsp.util.apply_text_edits({ text_edit }, bufnr, 'utf-8')
 
@@ -132,16 +121,10 @@ M.show_completion = util.debounce(function(start)
     paw.interact()
     popup_menu.open(items, {
       on_select = function(selected_item, _)
-        local text_edit = paw.table_get(selected_item, { 'textEdit' })
-        if text_edit then
-          apply_text_edit(text_edit)
-        else
-          insert_text_at_cursor(selected_item.insertText or selected_item.label, start)
-        end
+        apply_text_edit(selected_item)
       end,
       on_preview = function(item, _)
-        local text = item.insertText or item.label
-        extmark_at_cursor(text, start)
+        extmark_at_cursor(item)
       end
     })
   end
