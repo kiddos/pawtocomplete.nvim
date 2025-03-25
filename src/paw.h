@@ -33,6 +33,12 @@ enum CompletionItemKind {
   TypeParameter = 25,
 };
 
+enum CompletionTriggerKind {
+  Invoked = 1,
+  TriggerCharacter = 2,
+  TriggerForIncompleteCompletions = 3,
+};
+
 struct Position {
   int line;
   int character;

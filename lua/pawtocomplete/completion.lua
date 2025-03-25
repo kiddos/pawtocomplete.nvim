@@ -10,12 +10,6 @@ local popup_menu = require('pawtocomplete.completion_menu')
 
 popup_menu.setup()
 
-local CompletionTriggerKind = {
-  Invoked = 1,
-  TriggerCharacter = 2,
-  TriggerForIncompleteCompletions = 3,
-}
-
 local context = {
   completion_items = {},
   request_ids = {},
@@ -134,21 +128,14 @@ local function make_completion_request_param(start, client)
   local params = lsp.util.make_position_params()
   local line = api.nvim_get_current_line()
   if start > 1 then
-    local trigger_char = string.sub(line, start - 1, start - 1)
     local triggers = paw.table_get(client, { 'server_capabilities', 'completionProvider', 'triggerCharacters' })
     if triggers then
-      for _, t in ipairs(triggers) do
-        if trigger_char == t then
-          params.context = {
-            triggerKind = CompletionTriggerKind.TriggerCharacter,
-            triggerCharacter = trigger_char,
-          }
-          break
-        end
+      local trigger_context = paw.find_trigger_context(triggers, line, start-1)
+      if trigger_context then
+        params.context = trigger_context
       end
     end
   end
-
   -- params.position.character = start
   return params
 end

@@ -514,6 +514,43 @@ int lua_filter_and_sort(lua_State* L) {
   return 1;
 }
 
+int lua_find_trigger_context(lua_State* L) {
+  if (lua_istable(L, 1)) {
+    std::string line = luaL_checkstring(L, 2);
+    int start = luaL_checkint(L, 3);
+    const char c = start >= 0 ? line[start] : '\0';
+
+    lua_pushnil(L);
+
+    std::string trigger_char;
+    while (lua_next(L, 1) != 0) {
+      // Key is at index -2, value at -1
+      if (lua_isstring(L, -1)) {
+        const char* value = lua_tostring(L, -1);
+        if (value && c == value[0]) {
+          if (trigger_char.empty()) {
+            trigger_char.push_back(c);
+          }
+        }
+      }
+      lua_pop(L, 1);
+    }
+
+    if (!trigger_char.empty()) {
+      lua_newtable(L);
+      lua_pushstring(L, trigger_char.c_str());
+      lua_setfield(L, -2, "triggerCharacter");
+      lua_pushinteger(L, TriggerCharacter);
+      lua_setfield(L, -2, "triggerKind");
+    } else {
+      lua_pushnil(L);
+    }
+  } else {
+    lua_pushnil(L);
+  }
+  return 1;
+}
+
 std::string get_emoji(CatState state) {
   if (state == CatState::NORMAL) {
     return u8"🐱";
@@ -620,6 +657,9 @@ extern "C" int luaopen_paw(lua_State* L) {
 
   lua_pushcfunction(L, lua_table_get);
   lua_setfield(L, -2, "table_get");
+
+  lua_pushcfunction(L, lua_find_trigger_context);
+  lua_setfield(L, -2, "find_trigger_context");
 
   lua_pushcfunction(L, lua_filter_and_sort);
   lua_setfield(L, -2, "filter_and_sort");
