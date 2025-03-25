@@ -12,6 +12,7 @@ local default_config = {
   },
   window = {
     width = 60,
+    max_width = 80,
     max_height = 10,
     relative = 'cursor',
     style = 'minimal',
@@ -50,21 +51,30 @@ local function create_popup()
   local num_items = #context.items
   local height = math.min(num_items, config.window.max_height)
 
-  local width = config.window.width or 60
-  local max_item_width = width
+  local content_width = config.window.width or 60
+  local content_height = height
   for _, item in ipairs(context.items) do
-    max_item_width = math.max(max_item_width, #item.label + 3)
+    local item_width = math.min(#item.label + 3, config.window.max_width)
+    content_width = math.max(content_width, item_width)
   end
-  local win_width = vim.api.nvim_win_get_width(0)
+  local win_width = api.nvim_win_get_width(0)
+  local win_height = api.nvim_win_get_height(0)
   local pos = api.nvim_win_get_cursor(0)
-  width = math.min(width, win_width - pos[2])
+  local col = config.window.col
+  if pos[2] + content_width > win_width then
+    col = win_width - content_width
+  end
+  local row = config.window.row
+  if pos[1] + content_height > win_height then
+    row = - content_height - 1
+  end
 
   local win = api.nvim_open_win(buf, false, {
     relative = config.window.relative,
-    row = config.window.row,
-    col = config.window.col,
-    width = width,
-    height = height,
+    row = row,
+    col = col,
+    width = content_width,
+    height = content_height,
     style = config.window.style,
     border = config.window.border,
     zindex = config.window.zindex
