@@ -131,27 +131,24 @@ M.show_completion = util.debounce(function(start)
 end, 66)
 
 local function make_completion_request_param(start, client)
-  local triggers = paw.table_get(client, { 'server_capabilities', 'completionProvider', 'triggerCharacters' })
   local params = lsp.util.make_position_params()
   local line = api.nvim_get_current_line()
-  local trigger_char = nil
   if start > 1 then
-    trigger_char = string.sub(line, start - 1, start - 1)
-  end
-  local trigger_kind = CompletionTriggerKind.Invoked
-  if triggers then
-    for _, t in ipairs(triggers) do
-      if trigger_char == t then
-        trigger_kind = CompletionTriggerKind.TriggerCharacter
-        break
+    local trigger_char = string.sub(line, start - 1, start - 1)
+    local triggers = paw.table_get(client, { 'server_capabilities', 'completionProvider', 'triggerCharacters' })
+    if triggers then
+      for _, t in ipairs(triggers) do
+        if trigger_char == t then
+          params.context = {
+            triggerKind = CompletionTriggerKind.TriggerCharacter,
+            triggerCharacter = trigger_char,
+          }
+          break
+        end
       end
     end
   end
 
-  params.context = {
-    triggerKind = trigger_kind,
-    triggerCharacter = trigger_char,
-  }
   -- params.position.character = start
   return params
 end
