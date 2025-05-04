@@ -90,7 +90,7 @@ local function apply_text_edit(item)
   end
 end
 
-M.show_completion = util.debounce(function(start)
+M.show_completion = function(start)
   local base_word = find_completion_base_word(start + 1)
   if not base_word then
     return
@@ -122,7 +122,7 @@ M.show_completion = util.debounce(function(start)
       end
     })
   end
-end, 66)
+end
 
 local function make_completion_request_param(start, client)
   local params = lsp.util.make_position_params()
