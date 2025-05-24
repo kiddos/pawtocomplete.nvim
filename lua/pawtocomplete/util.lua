@@ -1,4 +1,5 @@
 local api = vim.api
+local fn = vim.fn
 
 local M = {}
 
@@ -9,7 +10,7 @@ M.floating_dimensions = function(lines, max_height, max_width)
   local width = 0
   local l_width
   for i, l in ipairs(lines) do
-    l_width = vim.fn.strdisplaywidth(l)
+    l_width = fn.strdisplaywidth(l)
     if i <= height and width < l_width then width = l_width end
   end
   width = math.min(width, max_width)

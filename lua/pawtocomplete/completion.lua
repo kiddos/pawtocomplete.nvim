@@ -1,5 +1,6 @@
 local api = vim.api
 local lsp = vim.lsp
+local fn = vim.fn
 
 local M = {}
 
@@ -80,13 +81,13 @@ local function apply_text_edit(item)
   end
 
   local bufnr = api.nvim_get_current_buf()
-  vim.lsp.util.apply_text_edits({ text_edit }, bufnr, 'utf-8')
+  lsp.util.apply_text_edits({ text_edit }, bufnr, 'utf-8')
 
   local text = paw.table_get(text_edit, { 'newText' })
   local row = paw.table_get(text_edit, { 'range', 'start', 'line' })
   local col = paw.table_get(text_edit, { 'range', 'start', 'character' })
   if text and row and col then
-    vim.api.nvim_win_set_cursor(0, { row + 1, col + #text })
+    api.nvim_win_set_cursor(0, { row + 1, col + #text })
   end
 end
 
@@ -111,7 +112,7 @@ M.show_completion = function(start)
     start = start,
   }
   local items = paw.filter_and_sort(context.completion_items, option, param)
-  if vim.fn.mode() == 'i' then
+  if fn.mode() == 'i' then
     paw.interact()
     popup_menu.open(items, {
       on_select = function(selected_item, _)

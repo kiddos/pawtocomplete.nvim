@@ -1,4 +1,5 @@
 local api = vim.api
+local lsp = vim.lsp
 local paw = require('pawtocomplete.paw')
 
 local M = {}
@@ -167,7 +168,7 @@ local function render_menu()
   local hl_commands = {}
 
   for i, item in ipairs(context.items) do
-    table.insert(lines, string.format(' %s  %s', vim.lsp.protocol.CompletionItemKind[item.kind],  item.label))
+    table.insert(lines, string.format(' %s  %s', lsp.protocol.CompletionItemKind[item.kind],  item.label))
     table.insert(hl_commands, {
       group = hl_groups[item.kind],
       line = i - 1,
@@ -258,7 +259,7 @@ local function setup_keymaps()
         move_up()
         return ''
       else
-        return vim.api.nvim_replace_termcodes('<C-p>', true, true, true)
+        return api.nvim_replace_termcodes('<C-p>', true, true, true)
       end
     end,
     expr = true
@@ -272,7 +273,7 @@ local function setup_keymaps()
         move_down()
         return ''
       else
-        return vim.api.nvim_replace_termcodes('<C-n>', true, true, true)
+        return api.nvim_replace_termcodes('<C-n>', true, true, true)
       end
     end,
     expr = true
@@ -286,7 +287,7 @@ local function setup_keymaps()
         handle_select()
         return ''
       else
-        return vim.api.nvim_replace_termcodes('<CR>', true, true, true)
+        return api.nvim_replace_termcodes('<CR>', true, true, true)
       end
     end,
     expr = true
@@ -302,7 +303,7 @@ local function setup_keymaps()
         end)
         return ''
       else
-        return vim.api.nvim_replace_termcodes('<C-e>', true, true, true)
+        return api.nvim_replace_termcodes('<C-e>', true, true, true)
       end
     end,
     expr = true
@@ -361,7 +362,7 @@ function M.open(items, opt)
 
   context.buf, context.win = create_popup()
 
-  if vim.api.nvim_get_mode().mode ~= 'i' then
+  if api.nvim_get_mode().mode ~= 'i' then
     vim.cmd('startinsert')
   end
 
