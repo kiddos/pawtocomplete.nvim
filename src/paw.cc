@@ -391,8 +391,8 @@ std::pair<int, bool> edit_distance(const std::string& s1,
   const int delete_cost = option.delete_cost;
   const int substitude_cost = option.substitude_cost;
 
-  const size_t len1 = s1.size();
-  const size_t len2 = s2.size();
+  const size_t len1 = std::min(s1.length(), s2.length());
+  const size_t len2 = s2.length();
 
   std::vector<std::vector<int>> dp(len1 + 1, std::vector<int>(len2 + 1, 0));
 
@@ -466,6 +466,12 @@ void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
   }
 }
 
+double compute_cost(int dist, EditDistanceOption& option) {
+  return option.keyword.length() == 0
+    ? std::numeric_limits<int>::max()
+    : (double)dist / option.keyword.length();
+}
+
 int lua_filter_and_sort(lua_State* L) {
   luaL_checktype(L, 1, LUA_TTABLE);
   luaL_checktype(L, 2, LUA_TTABLE);
@@ -485,10 +491,8 @@ int lua_filter_and_sort(lua_State* L) {
 
   for (auto& item : items) {
     std::string& text = get_text(item);
-    auto [cost, match_once] = edit_distance(text, option);
-    item.cost = option.keyword.length() == 0
-                    ? std::numeric_limits<int>::max()
-                    : (double)cost / option.keyword.length();
+    auto [dist, match_once] = edit_distance(text, option);
+    item.cost = compute_cost(dist, option);
     item.match_once = match_once;
   }
 
