@@ -112,7 +112,7 @@ M.show_completion = function(start)
     start = start,
   }
   local items = paw.filter_and_sort(context.completion_items, option, param)
-  if fn.mode() == 'i' then
+  if fn.mode() == 'i' and #items > 0 then
     paw.interact()
     popup_menu.open(items, {
       on_select = function(selected_item, _)
@@ -181,6 +181,7 @@ M.trigger_completion = util.debounce(function(bufnr)
     start = math.max(start, result)
   end
 
+  popup_menu.close()
   if start >= 0 and start <= col then
     for _, client in pairs(clients) do
       if paw.table_get(client, { 'server_capabilities', 'completionProvider' }) then
