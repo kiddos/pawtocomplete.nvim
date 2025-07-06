@@ -9,6 +9,7 @@ extern "C" {
 #include <vector>
 
 #include "paw.h"
+#include "lfu.h"
 
 std::string trim(const std::string& str) {
   size_t first = str.find_first_not_of(" \t\n\r");
@@ -643,6 +644,81 @@ int lua_cat_emoji(lua_State* L) {
   return 1;
 }
 
+constexpr int DEFAULT_CACHE_SIZE = 100;
+using Cache = LFU<CacheKey, std::vector<CompletionItem>, HashCacheKey, DEFAULT_CACHE_SIZE>;
+static Cache cache;
+
+CacheKey parse_cache_key(lua_State* L) {
+  CacheKey key;
+  lua_getfield(L, -1, "bufnr");
+  key.bufnr = luaL_optinteger(L, -1, 0);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "line");
+  key.line = luaL_optinteger(L, -1, 0);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "col");
+  key.col = luaL_optinteger(L, -1, 0);
+  lua_pop(L, 1);
+
+  key.word = get_optional_string(L, "word")
+                       ? *get_optional_string(L, "word")
+                       : "";
+  return key;
+}
+
+int lua_put_cache_result(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  luaL_checktype(L, 2, LUA_TTABLE);
+
+  lua_pushvalue(L, 1);
+  CacheKey key = parse_cache_key(L);
+  lua_pop(L, 1);
+
+  lua_pushvalue(L, 2);
+  std::vector<CompletionItem> items = parse_completion_items(L);
+  lua_pop(L, 1);
+
+  cache.put(key, items);
+  return 0;
+}
+
+int lua_get_cache_result(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+
+  lua_pushvalue(L, 1);
+  CacheKey key = parse_cache_key(L);
+  lua_pop(L, 1);
+
+  std::vector<CompletionItem> items = cache.get(key);
+  push_completion_items(L, items);
+  return 1;
+}
+
+int lua_remove_cache_result(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+
+  lua_pushvalue(L, 1);
+  CacheKey key = parse_cache_key(L);
+  lua_pop(L, 1);
+
+  cache.remove(key);
+  return 0;
+}
+
+int lua_has_cache_value(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+
+  lua_pushvalue(L, 1);
+  CacheKey key = parse_cache_key(L);
+  lua_pop(L, 1);
+
+  bool has_value = cache.has_value(key);
+  lua_pushboolean(L, has_value);
+  return 1;
+}
+
 // paw module
 extern "C" int luaopen_paw(lua_State* L) {
   lua_newtable(L);
@@ -673,5 +749,17 @@ extern "C" int luaopen_paw(lua_State* L) {
 
   lua_pushcfunction(L, lua_cat_emoji);
   lua_setfield(L, -2, "cat_emoji");
+
+  lua_pushcfunction(L, lua_put_cache_result);
+  lua_setfield(L, -2, "put_cache_result");
+
+  lua_pushcfunction(L, lua_get_cache_result);
+  lua_setfield(L, -2, "get_cache_result");
+
+  lua_pushcfunction(L, lua_remove_cache_result);
+  lua_setfield(L, -2, "remove_cache_result");
+
+  lua_pushcfunction(L, lua_has_cache_value);
+  lua_setfield(L, -2, "has_cache_value");
   return 1;
 }

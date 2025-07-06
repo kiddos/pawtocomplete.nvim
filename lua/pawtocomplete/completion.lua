@@ -161,6 +161,19 @@ local function lsp_completion_request(start, client, bufnr, callback)
   end
 end
 
+local function get_cache_key(bufnr, line, col, start)
+  local keyword = find_completion_base_word(start + 1)
+  if keyword == nil then
+    keyword = ''
+  end
+  return {
+    bufnr = bufnr,
+    line = line,
+    col = col,
+    word = keyword,
+  }
+end
+
 M.trigger_completion = util.debounce(function(bufnr)
   local clients = lsp.get_clients({ bufnr = bufnr })
   context.completion_items = {}
@@ -182,7 +195,17 @@ M.trigger_completion = util.debounce(function(bufnr)
   end
 
   popup_menu.close()
+
+  local linenr = api.nvim_win_get_cursor(0)[1]
+  local key = get_cache_key(bufnr, linenr, col, start)
   if start >= 0 and start <= col then
+    if paw.has_cache_value(key) then
+      local items = paw.get_cache_result(key)
+      context.completion_items = items
+      M.show_completion(start)
+      return
+    end
+
     for _, client in pairs(clients) do
       if paw.table_get(client, { 'server_capabilities', 'completionProvider' }) then
         lsp_completion_request(start, client, bufnr, function(items)
@@ -191,6 +214,8 @@ M.trigger_completion = util.debounce(function(bufnr)
               table.insert(context.completion_items, item)
             end
           end
+
+          paw.put_cache_result(key, items)
           M.show_completion(start)
         end)
       end

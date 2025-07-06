@@ -2,8 +2,10 @@
 #define PAW_H
 
 #include <chrono>
-#include <string>
+#include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 enum CompletionItemKind {
   Text = 1,
@@ -100,6 +102,30 @@ struct Cat {
 
 struct Context {
   Cat cat;
+};
+
+struct CacheKey {
+  int bufnr;
+  int line;
+  int col;
+  std::string word;
+
+  bool operator==(const CacheKey& key) const {
+    return bufnr == key.bufnr && line == key.line && col == key.col &&
+           word == key.word;
+  }
+};
+
+struct HashCacheKey {
+  size_t operator()(const CacheKey& key) const {
+    return std::hash<int>()(key.bufnr) ^ std::hash<int>()(key.line) ^
+           std::hash<int>()(key.col) ^ std::hash<std::string>()(key.word);
+  }
+};
+
+struct DataItem {
+  CacheKey key;
+  std::vector<CompletionItem> items;
 };
 
 #endif /* end of include guard: PAW_H */
