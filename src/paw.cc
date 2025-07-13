@@ -8,8 +8,8 @@ extern "C" {
 #include <algorithm>
 #include <vector>
 
-#include "paw.h"
 #include "lfu.h"
+#include "paw.h"
 
 std::string trim(const std::string& str) {
   size_t first = str.find_first_not_of(" \t\n\r");
@@ -392,33 +392,31 @@ std::pair<int, bool> edit_distance(const std::string& s1,
   const int delete_cost = option.delete_cost;
   const int substitude_cost = option.substitude_cost;
 
-  const size_t len1 = std::min(s1.length(), s2.length());
+  const size_t len1 = s1.length();
   const size_t len2 = s2.length();
 
-  std::vector<std::vector<int>> dp(len1 + 1, std::vector<int>(len2 + 1, 0));
-
-  for (size_t i = 0; i <= len1; ++i) {
-    dp[i][0] = i * delete_cost;
-  }
+  std::vector<int> dp(len2 + 1);
+  std::vector<int> next_dp(len2 + 1);
   for (size_t j = 0; j <= len2; ++j) {
-    dp[0][j] = j * insert_cost;
+    dp[j] = j * insert_cost;
   }
 
   bool match_once = false;
   for (size_t i = 1; i <= len1; ++i) {
+    next_dp[0] = i * delete_cost;
     for (size_t j = 1; j <= len2; ++j) {
       if (s1[i - 1] == s2[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1];
+        next_dp[j] = dp[j - 1];
         match_once = true;
       } else {
-        dp[i][j] =
-            std::min({dp[i - 1][j] + delete_cost,            // Deletion
-                      dp[i][j - 1] + insert_cost,            // Insertion
-                      dp[i - 1][j - 1] + substitude_cost});  // Substitution
+        next_dp[j] = std::min({dp[j] + delete_cost,            // Deletion
+                               next_dp[j - 1] + insert_cost,   // Insertion
+                               dp[j - 1] + substitude_cost});  // Substitution
       }
     }
+    dp = next_dp;
   }
-  return {dp[len1][len2], match_once};
+  return {dp[len2], match_once};
 }
 
 struct CompareCompletionItem {
@@ -437,11 +435,10 @@ struct CompareCompletionItem {
   }
 };
 
-
 std::string& get_text(CompletionItem& item) {
   return item.insert_text   ? *item.insert_text
-                      : item.filter_text ? *item.filter_text
-                                          : item.label;
+         : item.filter_text ? *item.filter_text
+                            : item.label;
 }
 
 void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
@@ -468,9 +465,8 @@ void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
 }
 
 double compute_cost(int dist, EditDistanceOption& option) {
-  return option.keyword.length() == 0
-    ? std::numeric_limits<int>::max()
-    : (double)dist / option.keyword.length();
+  return option.keyword.length() == 0 ? std::numeric_limits<int>::max()
+                                      : (double)dist / option.keyword.length();
 }
 
 int lua_filter_and_sort(lua_State* L) {
@@ -500,7 +496,8 @@ int lua_filter_and_sort(lua_State* L) {
   std::vector<CompletionItem> output;
   if (option.keyword.empty()) {
     for (auto& item : items) {
-      if (item.kind != CompletionItemKind::Text && item.kind != CompletionItemKind::Snippet) {
+      if (item.kind != CompletionItemKind::Text &&
+          item.kind != CompletionItemKind::Snippet) {
         output.push_back(item);
       }
     }
@@ -624,9 +621,9 @@ void interact(Cat& cat) {
 
 Cat init_cat() {
   return Cat{
-    .state = CatState::NORMAL,
-    .counter = 0,
-    .last_interact = std::chrono::system_clock::now(),
+      .state = CatState::NORMAL,
+      .counter = 0,
+      .last_interact = std::chrono::system_clock::now(),
   };
 }
 
@@ -645,7 +642,8 @@ int lua_cat_emoji(lua_State* L) {
 }
 
 constexpr int DEFAULT_CACHE_SIZE = 100;
-using Cache = LFU<CacheKey, std::vector<CompletionItem>, HashCacheKey, DEFAULT_CACHE_SIZE>;
+using Cache = LFU<CacheKey, std::vector<CompletionItem>, HashCacheKey,
+                  DEFAULT_CACHE_SIZE>;
 static Cache cache;
 
 CacheKey parse_cache_key(lua_State* L) {
@@ -662,9 +660,8 @@ CacheKey parse_cache_key(lua_State* L) {
   key.col = luaL_optinteger(L, -1, 0);
   lua_pop(L, 1);
 
-  key.word = get_optional_string(L, "word")
-                       ? *get_optional_string(L, "word")
-                       : "";
+  key.word =
+      get_optional_string(L, "word") ? *get_optional_string(L, "word") : "";
   return key;
 }
 
@@ -680,7 +677,7 @@ int lua_put_cache_result(lua_State* L) {
   std::vector<CompletionItem> items = parse_completion_items(L);
   lua_pop(L, 1);
 
-  cache.put(key, items);
+  cache.put(key, std::move(items));
   return 0;
 }
 

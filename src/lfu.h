@@ -9,19 +9,19 @@ class LFU {
  public:
   LFU() : min_freq_(0), cache_(SIZE) {}
 
-  void put(const T& key, const U& value) {
+  void put(const T& key, U&& value) {
     if (cache_.count(key)) {
-      cache_[key].second->second = value;
+      cache_[key].second->second = std::move(value);
       increase_use_count(key);
     } else {
       if ((int)cache_.size() == SIZE) {
         auto it = data_[min_freq_].begin();
-        auto key = it->first;
-        cache_.erase(key);
+        auto key_to_evict = it->first;
+        cache_.erase(key_to_evict);
         data_[min_freq_].erase(it);
       }
 
-      data_[1].push_back({key, value});
+      data_[1].push_back({key, std::move(value)});
       auto it = prev(data_[1].end());
       cache_[key] = {1, it};
       min_freq_ = 1;
