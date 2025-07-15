@@ -16,10 +16,10 @@ jobs:
       - name: Install Neovim
         run: |
           curl -LO https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
-          tar xzgf nvim-linux-x86_64.tar.gz
-          sudo cp -r nvim-linux64/bin/* /usr/local/bin/
-          sudo cp -r nvim-linux64/lib/* /usr/local/lib/
-          sudo cp -r nvim-linux64/share/* /usr/local/share/
+          tar xvf nvim-linux-x86_64.tar.gz
+          sudo cp -r nvim-linux-x86_64/bin/* /usr/local/bin/
+          sudo cp -r nvim-linux-x86_64/lib/* /usr/local/lib/
+          sudo cp -r nvim-linux-x86_64/share/* /usr/local/share/
 
       - name: Install build dependencies
         run: |
