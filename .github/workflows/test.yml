@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Neovim
+        run: |
+          curl -LO https://github.com/neovim/neovim/releases/download/stable/nvim-linux64.tar.gz
+          tar xzgf nvim-linux64.tar.gz
+          sudo cp -r nvim-linux64/bin/* /usr/local/bin/
+          sudo cp -r nvim-linux64/lib/* /usr/local/lib/
+          sudo cp -r nvim-linux64/share/* /usr/local/share/
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+
+      - name: Run tests
+        run: make test
