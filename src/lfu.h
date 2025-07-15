@@ -2,7 +2,7 @@
 #define LFU_H
 
 #include <list>
-#include <unordered_map>
+#include <absl/container/flat_hash_map.h>
 
 template <typename T, typename U, typename F, int SIZE>
 class LFU {
@@ -57,8 +57,8 @@ class LFU {
 
  private:
   int min_freq_;
-  std::unordered_map<int, std::list<std::pair<T, U>>> data_;
-  std::unordered_map<
+  absl::flat_hash_map<int, std::list<std::pair<T, U>>> data_;
+  absl::flat_hash_map<
       T, std::pair<int, typename std::list<std::pair<T, U>>::iterator>, F>
       cache_;
 

@@ -114,6 +114,11 @@ struct CacheKey {
     return bufnr == key.bufnr && line == key.line && col == key.col &&
            word == key.word;
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CacheKey& key) {
+    return H::combine(std::move(h), key.bufnr, key.line, key.col, key.word);
+  }
 };
 
 struct HashCacheKey {

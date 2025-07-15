@@ -18,11 +18,19 @@ FetchContent_Declare(
   GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(lua)
+# after watching https://www.youtube.com/watch?v=ncHmEUmJZf4
+# switching to abseil flat_hash_map instead of using std::unordered_map
+FetchContent_Declare(
+  abseil
+  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+  GIT_TAG        20250512.1
+)
+
+FetchContent_MakeAvailable(lua abseil)
 
 message("${lua_SOURCE_DIR}/src")
 include_directories("${lua_SOURCE_DIR}")
 file(GLOB_RECURSE LUA_SOURCES ${lua_SOURCE_DIR}/*.c)
 add_library(paw src/paw.cc ${LUA_SOURCES})
 
-target_link_libraries(paw)
+target_link_libraries(paw PRIVATE absl::hash absl::flat_hash_map)
