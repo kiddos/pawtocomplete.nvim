@@ -213,4 +213,62 @@ describe('paw', function()
     assert(item.textEdit.range['end'].line == 3)
     assert(item.textEdit.range['end'].character == 10)
   end)
+
+  it('find_last_word_index', function()
+    assert(paw.find_last_word_index('hello world') == 6)
+    assert(paw.find_last_word_index('hello world ') == nil)
+    assert(paw.find_last_word_index(' helloworld') == 1)
+    assert(paw.find_last_word_index('helloworld') == 0)
+  end)
+
+  it('find_last_trigger_index', function()
+    assert(paw.find_last_trigger_index('hello.world', '.') == 5)
+    assert(paw.find_last_trigger_index('hello.world.', '.') == 11)
+    assert(paw.find_last_trigger_index('hello world', '.') == nil)
+    assert(paw.find_last_trigger_index('hello.', '.') == 5)
+  end)
+
+  it('find_trigger_context', function()
+    local context = paw.find_trigger_context({ '.' }, 'hello.', 5)
+    assert(context.triggerCharacter == '.')
+    assert(context.triggerKind == 2)
+
+    context = paw.find_trigger_context({ '.' }, 'hello.world', 5 + 1)
+    assert(context == nil)
+  end)
+
+  it('cat', function()
+    -- The cat emoji is one of these: 🐱, 😺, 😸, 😽, 😼, 😾, 😿
+    local emoji = paw.cat_emoji()
+    assert(emoji ~= nil)
+
+    paw.interact()
+    local emoji2 = paw.cat_emoji()
+    assert(emoji2 ~= nil)
+  end)
+
+  it('cache', function()
+    local key = {
+      bufnr = 1,
+      line = 1,
+      col = 1,
+      word = 'word',
+    }
+    local value = {
+      {
+        label = 'text',
+        kind = 1,
+        detail = 'detail1',
+      },
+    }
+    paw.put_cache_result(key, value)
+    assert(paw.has_cache_value(key) == true)
+
+    local result = paw.get_cache_result(key)
+    assert(#result == 1)
+    assert(result[1].label == 'text')
+
+    paw.remove_cache_result(key)
+    assert(paw.has_cache_value(key) == false)
+  end)
 end)
