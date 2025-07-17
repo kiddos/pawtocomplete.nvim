@@ -719,6 +719,11 @@ int lua_has_cache_value(lua_State* L) {
   return 1;
 }
 
+int lua_clear_cache(lua_State*) {
+  cache.clear();
+  return 0;
+}
+
 int lua_get_stars(lua_State* L) {
   double cost = luaL_checknumber(L, 1);
   double p = (1.0 - cost) * 5;
@@ -776,6 +781,9 @@ extern "C" int luaopen_paw(lua_State* L) {
 
   lua_pushcfunction(L, lua_has_cache_value);
   lua_setfield(L, -2, "has_cache_value");
+
+  lua_pushcfunction(L, lua_clear_cache);
+  lua_setfield(L, -2, "clear_cache");
 
   lua_pushcfunction(L, lua_get_stars);
   lua_setfield(L, -2, "get_stars");

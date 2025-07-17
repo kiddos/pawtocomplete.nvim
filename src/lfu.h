@@ -55,6 +55,12 @@ class LFU {
     }
   }
 
+  void clear() {
+    min_freq_ = 0;
+    data_.clear();
+    cache_.clear();
+  }
+
  private:
   int min_freq_;
   absl::flat_hash_map<int, std::list<std::pair<T, U>>> data_;

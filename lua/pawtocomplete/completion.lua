@@ -250,6 +250,12 @@ M.setup = function()
     end
   })
 
+  api.nvim_create_autocmd({ 'BufWritePost' }, {
+    callback = function()
+      paw.clear_cache()
+    end
+  })
+
   api.nvim_set_keymap('i', '<C-Space>', '', {
     expr = true,
     noremap = true,
