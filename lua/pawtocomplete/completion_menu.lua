@@ -107,7 +107,8 @@ local function create_preview_window(_)
   local total = #context.items
   local current_selected = context.selected_idx
   local emoji = paw.cat_emoji() or '🐱'
-  local info = string.format(' %s  %d/%d', emoji, current_selected, total)
+  local stars = paw.get_stars(context.items[current_selected].cost)
+  local info = string.format(' %s  %d/%d %s', emoji, current_selected, total, stars)
   local lines = {info}
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 

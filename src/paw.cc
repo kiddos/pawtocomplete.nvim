@@ -464,9 +464,12 @@ void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
   }
 }
 
-double compute_cost(int dist, EditDistanceOption& option) {
-  return option.keyword.length() == 0 ? std::numeric_limits<int>::max()
-                                      : (double)dist / option.keyword.length();
+double compute_cost(const std::string& text, int dist, EditDistanceOption& option) {
+  if (option.keyword.length() == 0 || text.length() == 0) {
+    return std::numeric_limits<int>::max();
+  }
+  double base = option.keyword.length() * text.length();
+  return (double)dist / base;
 }
 
 int lua_filter_and_sort(lua_State* L) {
@@ -489,7 +492,7 @@ int lua_filter_and_sort(lua_State* L) {
   for (auto& item : items) {
     std::string& text = get_text(item);
     auto [dist, match_once] = edit_distance(text, option);
-    item.cost = compute_cost(dist, option);
+    item.cost = compute_cost(text, dist, option);
     item.match_once = match_once;
   }
 
@@ -716,6 +719,21 @@ int lua_has_cache_value(lua_State* L) {
   return 1;
 }
 
+int lua_get_stars(lua_State* L) {
+  double cost = luaL_checknumber(L, 1);
+  double p = (1.0 - cost) * 5;
+  std::string star = "⭐";
+  std::string stars;
+  int i = 0;
+  while (i <= p) {
+    stars += star;
+    i++;
+  }
+
+  lua_pushstring(L, stars.c_str());
+  return 1;
+}
+
 // paw module
 extern "C" int luaopen_paw(lua_State* L) {
   lua_newtable(L);
@@ -758,5 +776,8 @@ extern "C" int luaopen_paw(lua_State* L) {
 
   lua_pushcfunction(L, lua_has_cache_value);
   lua_setfield(L, -2, "has_cache_value");
+
+  lua_pushcfunction(L, lua_get_stars);
+  lua_setfield(L, -2, "get_stars");
   return 1;
 }
