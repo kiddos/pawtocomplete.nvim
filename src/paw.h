@@ -75,7 +75,10 @@ struct EditDistanceOption {
   int insert_cost;
   int delete_cost;
   int substitude_cost;
+  int alpha;
   double max_cost;
+  double beta;
+  double gamma;
 };
 
 struct CompletionParam {

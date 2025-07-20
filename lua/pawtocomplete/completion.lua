@@ -94,7 +94,7 @@ end
 M.show_completion = function(start)
   local base_word = find_completion_base_word(start + 1)
   if not base_word then
-    return
+    base_word = ''
   end
   local pos = api.nvim_win_get_cursor(0)
 
@@ -103,7 +103,7 @@ M.show_completion = function(start)
     insert_cost = config.completion.insert_cost,
     delete_cost = config.completion.delete_cost,
     substitude_cost = config.completion.substitude_cost,
-    max_cost = config.completion.edit_dist,
+    max_cost = config.completion.max_cost,
   }
   -- 0-indexed
   local param = {
@@ -206,6 +206,8 @@ M.trigger_completion = util.debounce(function(bufnr)
       return
     end
 
+    local total_clients = #clients
+    local counter = 0
     for _, client in pairs(clients) do
       if paw.table_get(client, { 'server_capabilities', 'completionProvider' }) then
         lsp_completion_request(start, client, bufnr, function(items)
@@ -215,7 +217,10 @@ M.trigger_completion = util.debounce(function(bufnr)
             end
           end
 
-          paw.put_cache_result(key, items)
+          counter = counter + 1
+          if counter == total_clients then
+            paw.put_cache_result(key, context.completion_items)
+          end
           M.show_completion(start)
         end)
       end

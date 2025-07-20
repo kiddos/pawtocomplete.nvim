@@ -108,7 +108,7 @@ local function create_preview_window(_)
   local current_selected = context.selected_idx
   local emoji = paw.cat_emoji() or '🐱'
   local stars = paw.get_stars(context.items[current_selected].cost)
-  local info = string.format(' %s  %d/%d %s', emoji, current_selected, total, stars)
+  local info = string.format(' %s  %d/%d %s %.2f', emoji, current_selected, total, stars, context.items[current_selected].cost)
   local lines = {info}
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
@@ -145,22 +145,22 @@ local hl_groups = {
   'Identifier', -- Variable
   'Type', -- Class
   'Type', -- Interface
-  'SpecialChar', -- Module
-  'SpecialChar', -- Property
+  'Keyword', -- Module
+  'Keyword', -- Property
   'Constant', -- Unit
   'Constant', -- Value
   'Constant', -- Enum
   'Keyword', -- Keyword
   'Function', -- Snippet
   'Constant', -- Color
-  'Tag', -- File
-  'Tag', -- Reference
-  'Tag', -- Folder
+  'Type', -- File
+  'Function', -- Reference
+  'Directory', -- Folder
   'Constant', -- EnumMember
   'Constant', -- Constant
   'Keyword', -- Struct
   'Normal', -- Event
-  'Normal', -- Operator
+  'Operator', -- Operator
   'Type', -- TypeParameter
 }
 
@@ -354,6 +354,10 @@ function M.open(items, opt)
   while context.items[context.selected_idx] and (context.items[context.selected_idx].type == 'separator' or context.items[context.selected_idx].type == 'title') do
     context.selected_idx = context.selected_idx + 1
   end
+
+  -- for i, item in pairs(items) do
+  --   print(item.label, item.cost)
+  -- end
 
   -- if context.on_preview and context.items[context.selected_idx] then
   --   vim.schedule(function()

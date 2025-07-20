@@ -361,7 +361,22 @@ EditDistanceOption parse_edit_distance_option(lua_State* L) {
   lua_pop(L, 1);
 
   lua_getfield(L, -1, "max_cost");
-  option.max_cost = luaL_optnumber(L, -1, 2.0);
+  option.max_cost = luaL_optnumber(L, -1, 1.0);
+  lua_pop(L, 1);
+
+  // largest alpha bias toward prefix
+  lua_getfield(L, -1, "alpha");
+  option.alpha = luaL_optinteger(L, -1, 2);
+  lua_pop(L, 1);
+
+  // prefer longer prefix matched
+  lua_getfield(L, -1, "beta");
+  option.beta = luaL_optnumber(L, -1, 2.0);
+  lua_pop(L, 1);
+
+  // penalize for long completion
+  lua_getfield(L, -1, "gamma");
+  option.gamma = luaL_optnumber(L, -1, 0.1);
   lua_pop(L, 1);
 
   return option;
@@ -405,13 +420,15 @@ std::pair<int, bool> edit_distance(const std::string& s1,
   for (size_t i = 1; i <= len1; ++i) {
     next_dp[0] = i * delete_cost;
     for (size_t j = 1; j <= len2; ++j) {
+      int weight = option.alpha * (1 - std::min(i, j) / std::max(len1, len2));
       if (s1[i - 1] == s2[j - 1]) {
         next_dp[j] = dp[j - 1];
         match_once = true;
       } else {
-        next_dp[j] = std::min({dp[j] + delete_cost,            // Deletion
-                               next_dp[j - 1] + insert_cost,   // Insertion
-                               dp[j - 1] + substitude_cost});  // Substitution
+        next_dp[j] =
+            std::min({dp[j] + delete_cost + weight,            // Deletion
+                      next_dp[j - 1] + insert_cost + weight,   // Insertion
+                      dp[j - 1] + substitude_cost + weight});  // Substitution
       }
     }
     dp = next_dp;
@@ -464,12 +481,29 @@ void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
   }
 }
 
-double compute_cost(const std::string& text, int dist, EditDistanceOption& option) {
-  if (option.keyword.length() == 0 || text.length() == 0) {
+int longest_common_prefix(const std::string& s1, const std::string& s2) {
+  int n = std::min(s1.length(), s2.length());
+  for (int i = 0; i < n; ++i) {
+    if (s1[i] != s2[i]) {
+      return i;
+    }
+  }
+  return n;
+}
+
+double compute_cost(const std::string& text, int dist,
+                    EditDistanceOption& option) {
+  if (option.keyword.length() == 0 && text.length() == 0) {
     return std::numeric_limits<int>::max();
   }
-  double base = option.keyword.length() * text.length();
-  return (double)dist / base;
+  int C = std::max(
+      {option.substitude_cost, option.insert_cost, option.delete_cost});
+  double P = longest_common_prefix(text, option.keyword);
+  double W = std::max(option.keyword.length(), text.length());
+  int L = option.keyword.length();
+  double cost = (double)dist / (W * C) - (L == 0 ? 0 : option.beta * (P / L)) +
+                (option.gamma * text.length() / W);
+  return cost;
 }
 
 int lua_filter_and_sort(lua_State* L) {
@@ -497,18 +531,9 @@ int lua_filter_and_sort(lua_State* L) {
   }
 
   std::vector<CompletionItem> output;
-  if (option.keyword.empty()) {
-    for (auto& item : items) {
-      if (item.kind != CompletionItemKind::Text &&
-          item.kind != CompletionItemKind::Snippet) {
-        output.push_back(item);
-      }
-    }
-  } else {
-    for (auto& item : items) {
-      if (item.match_once && item.cost <= option.max_cost) {
-        output.push_back(item);
-      }
+  for (auto& item : items) {
+    if (item.cost <= option.max_cost) {
+      output.push_back(item);
     }
   }
 
