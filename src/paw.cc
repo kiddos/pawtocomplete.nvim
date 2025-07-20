@@ -532,7 +532,9 @@ int lua_filter_and_sort(lua_State* L) {
 
   std::vector<CompletionItem> output;
   for (auto& item : items) {
-    if (item.cost <= option.max_cost) {
+    if (item.cost <= option.max_cost &&
+        ((option.keyword.length() > 0 && item.match_once) ||
+         option.keyword.length() == 0)) {
       output.push_back(item);
     }
   }
