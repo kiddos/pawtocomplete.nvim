@@ -204,7 +204,7 @@ describe('paw', function()
 
     local item = output[1]
     assert(item.label == 'foo')
-    assert(item.cost == 2)
+    assert(item.cost == -0.9)
     assert(item.kind == 2)
     assert(item.detail == 'detail2')
     assert(item.textEdit ~= nil)
