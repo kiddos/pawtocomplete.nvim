@@ -67,7 +67,7 @@ struct CompletionItem {
   std::optional<std::string> insert_text;
   std::optional<TextEdit> text_edit;
   double cost;
-  bool match_once;
+  bool is_subseq;
 };
 
 struct EditDistanceOption {

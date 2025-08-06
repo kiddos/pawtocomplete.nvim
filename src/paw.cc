@@ -11,6 +11,8 @@ extern "C" {
 #include "lfu.h"
 #include "paw.h"
 
+#define MAX_STARS 5
+
 std::string trim(const std::string& str) {
   size_t first = str.find_first_not_of(" \t\n\r");
   if (first == std::string::npos) {
@@ -416,14 +418,12 @@ std::pair<int, bool> edit_distance(const std::string& s1,
     dp[j] = j * insert_cost;
   }
 
-  bool match_once = false;
   for (size_t i = 1; i <= len1; ++i) {
     next_dp[0] = i * delete_cost;
     for (size_t j = 1; j <= len2; ++j) {
       int weight = option.alpha * (1 - std::min(i, j) / std::max(len1, len2));
-      if (s1[i - 1] == s2[j - 1]) {
+      if (tolower(s1[i - 1]) == tolower(s2[j - 1])) {
         next_dp[j] = dp[j - 1];
-        match_once = true;
       } else {
         next_dp[j] =
             std::min({dp[j] + delete_cost + weight,            // Deletion
@@ -433,7 +433,21 @@ std::pair<int, bool> edit_distance(const std::string& s1,
     }
     dp = next_dp;
   }
-  return {dp[len2], match_once};
+  bool is_subseq = false;
+  if (len2 > 0) {
+    for (size_t i = 0, j = 0; i < len1; ++i) {
+      if (tolower(s1[i]) == tolower(s2[j])) {
+        j++;
+      }
+      if (j == len2) {
+        is_subseq = true;
+        break;
+      }
+    }
+  } else {
+    is_subseq = true;
+  }
+  return {dp[len2], is_subseq};
 }
 
 struct CompareCompletionItem {
@@ -525,16 +539,26 @@ int lua_filter_and_sort(lua_State* L) {
 
   for (auto& item : items) {
     std::string& text = get_text(item);
-    auto [dist, match_once] = edit_distance(text, option);
+    auto [dist, is_subseq] = edit_distance(text, option);
     item.cost = compute_cost(text, dist, option);
-    item.match_once = match_once;
+    item.is_subseq = is_subseq;
+  }
+  if (!items.empty()) {
+    double max_cost = items[0].cost;
+    double min_cost = items[0].cost;
+    for (size_t i = 1; i < items.size(); ++i) {
+      max_cost = fmax(max_cost, items[i].cost);
+      min_cost = fmin(min_cost, items[i].cost);
+    }
+    double range = max_cost - min_cost;
+    for (size_t i = 0; i < items.size(); ++i) {
+      items[i].cost = (items[i].cost - min_cost) / range * MAX_STARS;
+    }
   }
 
   std::vector<CompletionItem> output;
   for (auto& item : items) {
-    if (item.cost <= option.max_cost &&
-        ((option.keyword.length() > 0 && item.match_once) ||
-         option.keyword.length() == 0)) {
+    if (item.is_subseq) {
       output.push_back(item);
     }
   }
