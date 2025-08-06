@@ -164,12 +164,44 @@ local hl_groups = {
   'Type', -- TypeParameter
 }
 
+
+SYMBOLS = {
+  Text = "󰉿",
+  Method = "󰆧",
+  Function = "󰊕",
+  Constructor = "",
+  Field = "󰜢",
+  Variable = "󰀫",
+  Class = "󰠱",
+  Interface = "",
+  Module = "",
+  Property = "󰜢",
+  Unit = "󰑭",
+  Value = "󰎠",
+  Enum = "",
+  Keyword = "󰌋",
+  Snippet = "",
+  Color = "󰏘",
+  File = "󰈙",
+  Reference = "󰈇",
+  Folder = "󰉋",
+  EnumMember = "",
+  Constant = "󰏿",
+  Struct = "󰙅",
+  Event = "",
+  Operator = "󰆕",
+  TypeParameter = "",
+}
+
 local function render_menu()
   local lines = {}
   local hl_commands = {}
 
   for i, item in ipairs(context.items) do
-    table.insert(lines, string.format(' %s  %s', lsp.protocol.CompletionItemKind[item.kind],  item.label))
+    local kind = lsp.protocol.CompletionItemKind[item.kind]
+    local symbol = SYMBOLS[kind] or ''
+
+    table.insert(lines, string.format(' %s  %s', symbol, item.label))
     table.insert(hl_commands, {
       group = hl_groups[item.kind],
       line = i - 1,
@@ -325,7 +357,7 @@ end
 local function setup_autocommands()
   local group = api.nvim_create_augroup('PopupMenu', { clear = true })
 
-  api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI', 'InsertLeave' }, {
+  api.nvim_create_autocmd({ 'InsertLeave' }, {
     group = group,
     buffer = context.source_buf,
     callback = function()
@@ -399,14 +431,6 @@ end
 
 function M.setup(user_config)
   context.config = vim.tbl_deep_extend('force', {}, default_config, user_config or {})
-
-  vim.cmd([[
-    hi def link PopupNormal PmenuSbar
-    hi def link PopupBorder FloatBorder
-    hi def link PopupTitle Title
-    hi def link PopupSeparator NonText
-  ]])
-
   return M
 end
 
