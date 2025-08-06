@@ -126,7 +126,8 @@ M.show_completion = function(start)
 end
 
 local function make_completion_request_param(start, client)
-  local params = lsp.util.make_position_params()
+  local offset_encoding = client.offset_encoding or 'utf-16'
+  local params = lsp.util.make_position_params(0, offset_encoding)
   local line = api.nvim_get_current_line()
   if start > 1 then
     local triggers = paw.table_get(client, { 'server_capabilities', 'completionProvider', 'triggerCharacters' })
@@ -148,14 +149,16 @@ local function lsp_completion_request(start, client, bufnr, callback)
   end
 
   local params = make_completion_request_param(start, client)
-  local result, request_id = client.request('textDocument/completion', params, function(err, client_result, _, _)
+  local handler = function(err, client_result, context)
     if not err then
       local items = paw.table_get(client_result, { 'items' }) or client_result
       if items then
         callback(items)
       end
     end
-  end, bufnr)
+  end
+
+  local result, request_id = client.request('textDocument/completion', params, handler, bufnr)
   if result then
     context.request_ids[client.id] = request_id
   end
