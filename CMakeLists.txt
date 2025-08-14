@@ -33,4 +33,4 @@ include_directories("${lua_SOURCE_DIR}")
 file(GLOB_RECURSE LUA_SOURCES ${lua_SOURCE_DIR}/*.c)
 add_library(paw src/paw.cc ${LUA_SOURCES})
 
-target_link_libraries(paw PRIVATE absl::hash absl::flat_hash_map)
+target_link_libraries(paw PRIVATE absl::hash absl::flat_hash_map absl::strings)

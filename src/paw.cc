@@ -5,7 +5,10 @@ extern "C" {
 #include "lua.h"
 }
 
+#include <absl/strings/str_format.h>
+
 #include <algorithm>
+#include <sstream>
 #include <vector>
 
 #include "lfu.h"
@@ -790,6 +793,68 @@ int lua_get_stars(lua_State* L) {
   return 1;
 }
 
+std::string abbreviate(const std::string& str, size_t length) {
+  std::string s = trim(str);
+  if (length < 3) {
+    return s.substr(0, std::min(s.length(), length));
+  }
+
+  if (s.length() <= length) {
+    return s;
+  }
+
+  size_t content_length = length - 3;
+  return s.substr(0, content_length) + "...";
+}
+
+std::string format_completion_item(const std::string& symbol,
+                                   const std::string& label,
+                                   const std::string& detail,
+                                   size_t symbol_width, size_t label_width,
+                                   size_t detail_width) {
+  return absl::StrFormat(" %*s  %-*s %*s",
+                         symbol_width, symbol,
+                         label_width, abbreviate(label, label_width-3),
+                         detail_width, abbreviate(detail, detail_width));
+}
+
+int lua_format_completion_item(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_pushvalue(L, 1);
+
+  lua_getfield(L, -1, "symbol");
+  std::string symbol = lua_tostring(L, -1);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "label");
+  std::string label = lua_tostring(L, -1);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "detail");
+  std::string detail = lua_tostring(L, -1);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "symbol_width");
+  size_t symbol_width = lua_tointeger(L, -1);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "label_width");
+  size_t label_width = lua_tointeger(L, -1);
+  lua_pop(L, 1);
+
+  lua_getfield(L, -1, "detail_width");
+  size_t detail_width = lua_tointeger(L, -1);
+  lua_pop(L, 1);
+
+  std::string output = format_completion_item(
+      symbol, label, detail, symbol_width, label_width, detail_width);
+
+  lua_pop(L, 1);
+
+  lua_pushstring(L, output.c_str());
+  return 1;
+}
+
 // paw module
 extern "C" int luaopen_paw(lua_State* L) {
   lua_newtable(L);
@@ -838,5 +903,8 @@ extern "C" int luaopen_paw(lua_State* L) {
 
   lua_pushcfunction(L, lua_get_stars);
   lua_setfield(L, -2, "get_stars");
+
+  lua_pushcfunction(L, lua_format_completion_item);
+  lua_setfield(L, -2, "format_completion_item");
   return 1;
 }

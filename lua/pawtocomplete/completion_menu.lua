@@ -12,8 +12,9 @@ local default_config = {
     close = '<C-e>'
   },
   window = {
-    width = 60,
-    max_width = 80,
+    symbol_width = 3,
+    label_width = 38,
+    detail_width = 20,
     max_height = 10,
     relative = 'cursor',
     style = 'minimal',
@@ -52,12 +53,8 @@ local function create_popup()
   local num_items = #context.items
   local height = math.min(num_items, config.window.max_height)
 
-  local content_width = config.window.width or 60
+  local content_width = config.window.symbol_width + config.window.label_width + config.window.detail_width + 1
   local content_height = height
-  for _, item in ipairs(context.items) do
-    local item_width = math.min(#item.label + 3, config.window.max_width)
-    content_width = math.max(content_width, item_width)
-  end
   local win_width = api.nvim_win_get_width(0)
   local win_height = api.nvim_win_get_height(0)
   local pos = api.nvim_win_get_cursor(0)
@@ -108,7 +105,7 @@ local function create_preview_window(_)
   local current_selected = context.selected_idx
   local emoji = paw.cat_emoji() or '🐱'
   local stars = paw.get_stars(context.items[current_selected].cost)
-  local info = string.format(' %s  %d/%d %s %.2f', emoji, current_selected, total, stars, context.items[current_selected].cost)
+  local info = string.format('%-2s  %d/%d %s %.2f', emoji, current_selected, total, stars, context.items[current_selected].cost)
   local lines = {info}
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
@@ -197,19 +194,44 @@ local function render_menu()
   local lines = {}
   local hl_commands = {}
 
+  local config = context.config
+  local content_width = 0
   for i, item in ipairs(context.items) do
     local kind = lsp.protocol.CompletionItemKind[item.kind]
+    local label = item.label or ''
     local symbol = SYMBOLS[kind] or ''
+    local detail = item.detail or ''
+    local menu_item = {
+      symbol = symbol,
+      label = label,
+      detail = detail,
+      symbol_width = config.window.symbol_width,
+      label_width = config.window.label_width,
+      detail_width = config.window.detail_width,
+    }
+    local line = paw.format_completion_item(menu_item)
+    content_width = math.max(content_width, string.len(line))
 
-    table.insert(lines, string.format(' %s  %s', symbol, item.label))
+    -- table.insert(lines, string.format(' %s %-20s %20s', symbol, label, detail))
+    table.insert(lines, line)
+    local extra_byte = 3
     table.insert(hl_commands, {
       group = hl_groups[item.kind],
       line = i - 1,
       col_start = 0,
-      col_end = 2
+      col_end = string.len(symbol),
+    })
+
+    local offset = config.window.symbol_width + config.window.label_width + extra_byte
+    table.insert(hl_commands, {
+      group = 'Comment',
+      line = i - 1,
+      col_start = offset,
+      col_end = offset + config.window.detail_width + extra_byte,
     })
   end
 
+  api.nvim_win_set_width(context.win, content_width - 2)
   api.nvim_buf_set_lines(context.buf, 0, -1, false, lines)
   api.nvim_buf_clear_namespace(context.buf, -1, 0, -1)
 
