@@ -35,12 +35,13 @@ M.auto_signature = util.debounce(function()
     if vim.tbl_contains(triggers, left_char) then
       if paw.table_get(client, { 'server_capabilities', 'signatureHelpProvider' }) then
         if context.lsp.request_ids[client.id] then
-          client.cancel_request(context.lsp.request_ids[client.id])
+          client:cancel_request(context.lsp.request_ids[client.id])
           context.lsp.request_ids[client.id] = nil
         end
 
-        local params = lsp.util.make_position_params()
-        local result, request_id = client.request('textDocument/signatureHelp', params, function(err, client_result, _, _)
+        local offset_encoding = client.offset_encoding or 'utf-16'
+        local params = lsp.util.make_position_params(0, offset_encoding)
+        local result, request_id = client:request('textDocument/signatureHelp', params, function(err, client_result, _, _)
           if not err then
             context.lsp.result[client.id] = client_result
             M.show_signature_window()
@@ -174,7 +175,7 @@ M.stop_signature = function()
   for client_id, request_id in pairs(context.lsp.request_ids) do
     local client = lsp.get_client_by_id(client_id)
     if client and request_id then
-      client.cancel_request(request_id)
+      client:cancel_request(request_id)
       context.lsp.request_ids[client_id] = nil
     end
   end

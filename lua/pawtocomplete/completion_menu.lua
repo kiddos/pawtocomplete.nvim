@@ -32,6 +32,7 @@ local default_config = {
 
 local context = {
   config = default_config,
+  ns_id = api.nvim_create_namespace('pawtocomplete.menu'),
   buf = nil,
   win = nil,
   preview_buf = nil,
@@ -233,16 +234,15 @@ local function render_menu()
 
   api.nvim_win_set_width(context.win, content_width - 2)
   api.nvim_buf_set_lines(context.buf, 0, -1, false, lines)
-  api.nvim_buf_clear_namespace(context.buf, -1, 0, -1)
+  api.nvim_buf_clear_namespace(context.buf, context.ns_id, 0, -1)
 
   for _, hl in ipairs(hl_commands) do
-    api.nvim_buf_add_highlight(
+    vim.hl.range(
       context.buf,
-      -1,
+      context.ns_id,
       hl.group,
-      hl.line,
-      hl.col_start,
-      hl.col_end
+      { hl.line, hl.col_start },
+      { hl.line, hl.col_end }
     )
   end
 
@@ -342,7 +342,7 @@ local function setup_keymaps()
         handle_select()
         return ''
       else
-        return api.nvim_replace_termcodes('<CR>', true, true, true)
+        return api.nvim_replace_termcodes(config.keymap.select, true, true, true)
       end
     end,
     expr = true
@@ -408,16 +408,6 @@ function M.open(items, opt)
   while context.items[context.selected_idx] and (context.items[context.selected_idx].type == 'separator' or context.items[context.selected_idx].type == 'title') do
     context.selected_idx = context.selected_idx + 1
   end
-
-  -- for i, item in pairs(items) do
-  --   print(item.label, item.cost)
-  -- end
-
-  -- if context.on_preview and context.items[context.selected_idx] then
-  --   vim.schedule(function()
-  --     context.on_preview(context.items[context.selected_idx], context.selected_idx)
-  --   end)
-  -- end
 
   context.buf, context.win = create_popup()
 

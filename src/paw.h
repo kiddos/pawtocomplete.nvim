@@ -65,6 +65,7 @@ struct CompletionItem {
   std::optional<std::string> sort_text;
   std::optional<std::string> filter_text;
   std::optional<std::string> insert_text;
+  std::optional<int> insert_text_format;
   std::optional<TextEdit> text_edit;
   double cost;
   bool is_subseq;

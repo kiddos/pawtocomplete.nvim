@@ -15,7 +15,7 @@ local context = {
   completion_items = {},
   request_ids = {},
   preview_id = nil,
-  ns_id = api.nvim_create_namespace("pawtocomplete"),
+  ns_id = api.nvim_create_namespace("pawtocomplete.completion"),
 }
 
 local function get_completion_start(client, line_to_cursor)
@@ -45,7 +45,8 @@ local function find_completion_base_word(start)
 end
 
 local function extmark_at_cursor(item)
-  local text = item.insertText or item.label
+  -- local text = item.insertText or item.label
+  local text = item.filterText or item.insertText or item.label
   local character = paw.table_get(item, { 'textEdit', 'range', 'start', 'character' })
   local bufnr = api.nvim_get_current_buf()
   local row = api.nvim_win_get_cursor(0)[1]
@@ -80,15 +81,30 @@ local function apply_text_edit(item)
     return
   end
 
-  local bufnr = api.nvim_get_current_buf()
-  lsp.util.apply_text_edits({ text_edit }, bufnr, 'utf-8')
-
-  local text = paw.table_get(text_edit, { 'newText' })
-  local row = paw.table_get(text_edit, { 'range', 'start', 'line' })
-  local col = paw.table_get(text_edit, { 'range', 'start', 'character' })
-  if text and row and col then
-    api.nvim_win_set_cursor(0, { row + 1, col + #text })
+  local character = paw.table_get(text_edit, { 'range', 'start', 'character' })
+  local line = paw.table_get(text_edit, { 'range', 'start', 'line' }) + 1
+  local cursor = api.nvim_win_get_cursor(0)
+  if line ~= cursor[1] then
+    return
   end
+
+  local bufnr = api.nvim_get_current_buf()
+  if item.insertTextFormat == 2 then
+    local current_line = api.nvim_get_current_line()
+    local before = current_line:sub(1, character)
+    api.nvim_set_current_line(before)
+    api.nvim_win_set_cursor(0, { line, character })
+
+    local snippet = paw.table_get(text_edit, { 'newText' })
+    vim.snippet.expand(snippet)
+  else
+    lsp.util.apply_text_edits({ text_edit }, bufnr, 'utf-8')
+    local text = paw.table_get(text_edit, { 'newText' })
+    if text then
+      api.nvim_win_set_cursor(0, { line, character + #text })
+    end
+  end
+
 end
 
 M.show_completion = function(start)
@@ -111,6 +127,7 @@ M.show_completion = function(start)
     cursor = pos[2],
     start = start,
   }
+
   local items = paw.filter_and_sort(context.completion_items, option, param)
   if fn.mode() == 'i' and #items > 0 then
     paw.interact()
@@ -125,31 +142,15 @@ M.show_completion = function(start)
   end
 end
 
-local function make_completion_request_param(start, client)
-  local offset_encoding = client.offset_encoding or 'utf-16'
-  local params = lsp.util.make_position_params(0, offset_encoding)
-  local line = api.nvim_get_current_line()
-  if start > 1 then
-    local triggers = paw.table_get(client, { 'server_capabilities', 'completionProvider', 'triggerCharacters' })
-    if triggers then
-      local trigger_context = paw.find_trigger_context(triggers, line, start-1)
-      if trigger_context then
-        params.context = trigger_context
-      end
-    end
-  end
-  -- params.position.character = start
-  return params
-end
-
-local function lsp_completion_request(start, client, bufnr, callback)
+local function lsp_completion_request(client, bufnr, callback)
   if context.request_ids[client.id] then
     client.cancel_request(context.request_ids[client.id])
     context.request_ids[client.id] = nil
   end
 
-  local params = make_completion_request_param(start, client)
-  local handler = function(err, client_result, context)
+  local offset_encoding = client.offset_encoding or 'utf-16'
+  local params = lsp.util.make_position_params(0, offset_encoding)
+  local handler = function(err, client_result, _)
     if not err then
       local items = paw.table_get(client_result, { 'items' }) or client_result
       if items then
@@ -213,7 +214,7 @@ M.trigger_completion = util.debounce(function(bufnr)
     local counter = 0
     for _, client in pairs(clients) do
       if paw.table_get(client, { 'server_capabilities', 'completionProvider' }) then
-        lsp_completion_request(start, client, bufnr, function(items)
+        lsp_completion_request(client, bufnr, function(items)
           if items then
             for _, item in pairs(items) do
               table.insert(context.completion_items, item)
@@ -235,7 +236,7 @@ M.stop_completion = function()
   for client_id, request_id in pairs(context.request_ids) do
     local client = lsp.get_client_by_id(client_id)
     if client and request_id then
-      client.cancel_request(request_id)
+      client:cancel_request(request_id)
       context.request_ids[client_id] = nil
     end
   end

@@ -8,7 +8,6 @@ extern "C" {
 #include <absl/strings/str_format.h>
 
 #include <algorithm>
-#include <sstream>
 #include <vector>
 
 #include "lfu.h"
@@ -185,6 +184,17 @@ CompletionItemKind get_completion_item_kind(lua_State* L, const char* key) {
   return kind;
 }
 
+std::optional<int> get_optional_int(lua_State* L, const char* key) {
+  lua_getfield(L, -1, key);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    return std::nullopt;
+  }
+  auto val = luaL_optinteger(L, -1, 1);
+  lua_pop(L, 1);
+  return std::optional<int>(val);
+}
+
 std::optional<std::string> get_optional_string(lua_State* L, const char* key) {
   lua_getfield(L, -1, key);
   std::optional<std::string> result;
@@ -251,6 +261,7 @@ CompletionItem parse_completion_item(lua_State* L) {
   item.sort_text = get_optional_string(L, "sortText");
   item.filter_text = get_optional_string(L, "filterText");
   item.insert_text = get_optional_string(L, "insertText");
+  item.insert_text_format = get_optional_int(L, "insertTextFormat");
   item.text_edit = get_optional_text_edit(L, "textEdit");
   return item;
 }
@@ -328,6 +339,10 @@ void push_completion_item(lua_State* L, const CompletionItem& item) {
   if (item.insert_text) {
     lua_pushstring(L, item.insert_text->c_str());
     lua_setfield(L, -2, "insertText");
+  }
+  if (item.insert_text_format) {
+    lua_pushinteger(L, *item.insert_text_format);
+    lua_setfield(L, -2, "insertTextFormat");
   }
   if (item.text_edit) {
     push_text_edit(L, *item.text_edit);
