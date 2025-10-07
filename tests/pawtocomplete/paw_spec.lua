@@ -187,6 +187,13 @@ describe('paw', function()
       },
     }
 
+    local client_id = 1
+    local bufnr = 1
+    local line = 1
+    local start = 1
+    local col = 2
+    paw.insert_items(completion_items, client_id, bufnr, line, col)
+
     local option = {
       keyword = 'f',
       insert_cost = 1,
@@ -194,12 +201,7 @@ describe('paw', function()
       substitude_cost = 2,
       max_cost = 2.5,
     }
-    local param = {
-      line = 1,
-      start = 2,
-      cursor = 10,
-    }
-    local output = paw.filter_and_sort(completion_items, option, param)
+    local output = paw.get_completion_items(bufnr, line, col, start, option)
     assert(#output == 1)
 
     local item = output[1]
@@ -211,7 +213,7 @@ describe('paw', function()
     assert(item.textEdit.range.start.line == 1)
     assert(item.textEdit.range.start.character == 2)
     assert(item.textEdit.range['end'].line == 3)
-    assert(item.textEdit.range['end'].character == 10)
+    assert(item.textEdit.range['end'].character == 2)
   end)
 
   it('find_last_word_index', function()
@@ -245,30 +247,5 @@ describe('paw', function()
     paw.interact()
     local emoji2 = paw.cat_emoji()
     assert(emoji2 ~= nil)
-  end)
-
-  it('cache', function()
-    local key = {
-      bufnr = 1,
-      line = 1,
-      col = 1,
-      word = 'word',
-    }
-    local value = {
-      {
-        label = 'text',
-        kind = 1,
-        detail = 'detail1',
-      },
-    }
-    paw.put_cache_result(key, value)
-    assert(paw.has_cache_value(key) == true)
-
-    local result = paw.get_cache_result(key)
-    assert(#result == 1)
-    assert(result[1].label == 'text')
-
-    paw.remove_cache_result(key)
-    assert(paw.has_cache_value(key) == false)
   end)
 end)

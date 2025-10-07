@@ -12,7 +12,6 @@ local popup_menu = require('pawtocomplete.completion_menu')
 popup_menu.setup()
 
 local context = {
-  completion_items = {},
   request_ids = {},
   preview_id = nil,
   ns_id = api.nvim_create_namespace("pawtocomplete.completion"),
@@ -121,14 +120,8 @@ M.show_completion = function(start)
     substitude_cost = config.completion.substitude_cost,
     max_cost = config.completion.max_cost,
   }
-  -- 0-indexed
-  local param = {
-    line = pos[1] - 1,
-    cursor = pos[2],
-    start = start,
-  }
-
-  local items = paw.filter_and_sort(context.completion_items, option, param)
+  local bufnr = api.nvim_get_current_buf()
+  local items = paw.get_completion_items(bufnr, pos[1], pos[2], start + 1, option)
   if fn.mode() == 'i' and #items > 0 then
     paw.interact()
     popup_menu.open(items, {
@@ -165,26 +158,14 @@ local function lsp_completion_request(client, bufnr, callback)
   end
 end
 
-local function get_cache_key(bufnr, line, col, start)
-  local keyword = find_completion_base_word(start + 1)
-  if keyword == nil then
-    keyword = ''
-  end
-  return {
-    bufnr = bufnr,
-    line = line,
-    col = col,
-    word = keyword,
-  }
-end
-
 M.trigger_completion = util.debounce(function(bufnr)
   local clients = lsp.get_clients({ bufnr = bufnr })
-  context.completion_items = {}
 
-  local line = api.nvim_get_current_line()
-  local col = api.nvim_win_get_cursor(0)[2]
-  local line_to_cursor = line:sub(1, col)
+  local current_line = api.nvim_get_current_line()
+  local cursor = api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+  local col = cursor[2]
+  local line_to_cursor = current_line:sub(1, col)
 
   local start = -1
   for _, client in pairs(clients) do
@@ -199,32 +180,16 @@ M.trigger_completion = util.debounce(function(bufnr)
   end
 
   popup_menu.close()
+  -- if paw.has_cache(bufnr, line, col) then
+  --   M.show_completion(start)
+  -- end
+  paw.clear_completion_items()
 
-  local linenr = api.nvim_win_get_cursor(0)[1]
-  local key = get_cache_key(bufnr, linenr, col, start)
   if start >= 0 and start <= col then
-    if paw.has_cache_value(key) then
-      local items = paw.get_cache_result(key)
-      context.completion_items = items
-      M.show_completion(start)
-      return
-    end
-
-    local total_clients = #clients
-    local counter = 0
     for _, client in pairs(clients) do
       if paw.table_get(client, { 'server_capabilities', 'completionProvider' }) then
         lsp_completion_request(client, bufnr, function(items)
-          if items then
-            for _, item in pairs(items) do
-              table.insert(context.completion_items, item)
-            end
-          end
-
-          counter = counter + 1
-          if counter == total_clients then
-            paw.put_cache_result(key, context.completion_items)
-          end
+          paw.insert_items(items, client.id, bufnr, line, col)
           M.show_completion(start)
         end)
       end
@@ -240,7 +205,7 @@ M.stop_completion = function()
       context.request_ids[client_id] = nil
     end
   end
-  context.completion_items = {}
+  paw.clear_completion_items()
 end
 
 M.auto_complete = function()
@@ -261,7 +226,7 @@ M.setup = function()
 
   api.nvim_create_autocmd({ 'BufWritePost' }, {
     callback = function()
-      paw.clear_cache()
+      paw.clear_completion_items()
     end
   })
 

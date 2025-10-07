@@ -10,7 +10,6 @@ extern "C" {
 #include <algorithm>
 #include <vector>
 
-#include "lfu.h"
 #include "paw.h"
 
 #define MAX_STARS 5
@@ -31,7 +30,10 @@ std::string trim_long_text(const std::string& s, size_t max_len) {
   return s;
 }
 
-int lua_trim(lua_State* L) {
+/**
+ * param1: text
+ */
+int lua_trim_long_text(lua_State* L) {
   const char* input = luaL_checkstring(L, 1);
   int max_len = luaL_checkint(L, 2);
   std::string t = trim(input);
@@ -52,6 +54,9 @@ bool has_none_space(const char* s) {
   return false;
 }
 
+/**
+ * param1: table|string
+ */
 int lua_is_whitespace(lua_State* L) {
   if (lua_istable(L, 1)) {
     lua_pushnil(L);
@@ -94,7 +99,7 @@ int lua_is_whitespace(lua_State* L) {
   return 1;
 }
 
-bool is_word_char(char c) { return isalnum(c) || c == '_'; }
+bool is_word_char(char c) { return isalnum(c) || c == '_' || c == '-'; }
 
 int lua_find_last_word_index(lua_State* L) {
   const char* input = luaL_checkstring(L, 1);
@@ -154,25 +159,25 @@ int lua_table_get(lua_State* L) {
   lua_pushvalue(L, 1);
 
   for (int i = 1; i <= list_len; ++i) {
-    lua_pushinteger(L, i);  // Push the index i
-    lua_gettable(L, 2);     // Get id[i]
+    lua_pushinteger(L, i);
+    lua_gettable(L, 2);
 
-    lua_pushvalue(L, -2);  // Push the current table (res)
-    lua_pushvalue(L, -2);  // Push id[i] again
+    lua_pushvalue(L, -2);
+    lua_pushvalue(L, -2);
 
-    lua_gettable(L, -2);  // Get res[id[i]]
+    lua_gettable(L, -2);
 
     if (lua_isnil(L, -1)) {
       lua_pushnil(L);
       return 1;
     }
 
-    lua_replace(L, -3);  // Replace the old res with the new res[id[i]]
-    lua_pop(L, 1);       // Pop id[i]
+    lua_replace(L, -3);
+    lua_pop(L, 1);
   }
 
-  lua_replace(L, 1);  // replace the original table with the result.
-  lua_settop(L, 1);   // Keep only the result on the stack.
+  lua_replace(L, 1);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -348,6 +353,9 @@ void push_completion_item(lua_State* L, const CompletionItem& item) {
     push_text_edit(L, *item.text_edit);
     lua_setfield(L, -2, "textEdit");
   }
+  lua_pushnumber(L, item.client_id);
+  lua_setfield(L, -2, "clientId");
+
   lua_pushnumber(L, item.cost);
   lua_setfield(L, -2, "cost");
 }
@@ -470,24 +478,33 @@ std::pair<int, bool> edit_distance(const std::string& s1,
 
 struct CompareCompletionItem {
   bool operator()(const CompletionItem& a, const CompletionItem& b) {
-    double cost_a = a.cost;
-    double cost_b = b.cost;
+    int format_a = a.insert_text_format ? *a.insert_text_format : 1;
+    int format_b = b.insert_text_format ? *b.insert_text_format : 1;
+    if (format_a == format_b) {
+      double cost_a = a.cost;
+      double cost_b = b.cost;
 
-    if (cost_a != cost_b) {
-      return cost_a < cost_b;
-    }
+      if (cost_a != cost_b) {
+        return cost_a < cost_b;
+      }
 
-    if (a.sort_text && b.sort_text) {
-      return *a.sort_text < *b.sort_text;
+      if (a.sort_text && b.sort_text) {
+        return *a.sort_text < *b.sort_text;
+      }
+      return a.label < b.label;
     }
-    return a.label < b.label;
+    return format_a > format_b;
   }
 };
 
 std::string& get_text(CompletionItem& item) {
-  return item.insert_text   ? *item.insert_text
-         : item.filter_text ? *item.filter_text
-                            : item.label;
+  if (item.filter_text) {
+    return *item.filter_text;
+  }
+  if (item.insert_text) {
+    return *item.insert_text;
+  }
+  return item.label;
 }
 
 void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
@@ -538,56 +555,6 @@ double compute_cost(const std::string& text, int dist,
   return cost;
 }
 
-int lua_filter_and_sort(lua_State* L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  luaL_checktype(L, 3, LUA_TTABLE);
-
-  lua_pushvalue(L, 1);
-  std::vector<CompletionItem> items = parse_completion_items(L);
-  lua_pop(L, 1);
-
-  lua_pushvalue(L, 2);
-  EditDistanceOption option = parse_edit_distance_option(L);
-  lua_pop(L, 1);
-
-  lua_pushvalue(L, 3);
-  CompletionParam param = parse_completion_param(L);
-  lua_pop(L, 1);
-
-  for (auto& item : items) {
-    std::string& text = get_text(item);
-    auto [dist, is_subseq] = edit_distance(text, option);
-    item.cost = compute_cost(text, dist, option);
-    item.is_subseq = is_subseq;
-  }
-  if (!items.empty()) {
-    double max_cost = items[0].cost;
-    double min_cost = items[0].cost;
-    for (size_t i = 1; i < items.size(); ++i) {
-      max_cost = fmax(max_cost, items[i].cost);
-      min_cost = fmin(min_cost, items[i].cost);
-    }
-    double range = max_cost - min_cost;
-    for (size_t i = 0; i < items.size(); ++i) {
-      items[i].cost = (items[i].cost - min_cost) / range * MAX_STARS;
-    }
-  }
-
-  std::vector<CompletionItem> output;
-  for (auto& item : items) {
-    if (item.is_subseq) {
-      output.push_back(item);
-    }
-  }
-
-  set_text_edit(output, param);
-  std::sort(output.begin(), output.end(), CompareCompletionItem());
-
-  push_completion_items(L, output);
-  return 1;
-}
-
 int lua_find_trigger_context(lua_State* L) {
   if (lua_istable(L, 1)) {
     std::string line = luaL_checkstring(L, 2);
@@ -625,171 +592,218 @@ int lua_find_trigger_context(lua_State* L) {
   return 1;
 }
 
-std::string get_emoji(CatState state) {
-  if (state == CatState::NORMAL) {
+Cat::Cat() : state_(CatState::NORMAL), counter_(0), last_interact_(std::chrono::system_clock::now()) {
+}
+
+void Cat::Interact() {
+  auto t = std::chrono::system_clock::now();
+  auto d = t - last_interact_;
+  if (d >= std::chrono::minutes(5)) {
+    state_ = CatState::CRYING;
+    counter_ = 0;
+  } else {
+    if (state_ == CatState::NORMAL) {
+      if (++counter_ >= 3) {
+        state_ = CatState::SMILE;
+        counter_ = 0;
+      }
+    } else if (state_ == CatState::SMILE) {
+      if (++counter_ >= 5) {
+        state_ = CatState::HAPPY;
+        counter_ = 0;
+      }
+    } else if (state_ == CatState::HAPPY) {
+      if (++counter_ >= 10) {
+        state_ = CatState::KISSING;
+        counter_ = 0;
+      }
+    } else if (state_ == CatState::KISSING) {
+      if (++counter_ >= 2) {
+        state_ = CatState::NORMAL;
+        counter_ = 0;
+      }
+    } else if (state_ == CatState::WRY) {
+      if (++counter_ >= 3) {
+        state_ = CatState::NORMAL;
+        counter_ = 0;
+      }
+    } else if (state_ == CatState::POUTING) {
+      if (++counter_ >= 3) {
+        state_ = CatState::WRY;
+        counter_ = 0;
+      }
+    } else if (state_ == CatState::CRYING) {
+      if (++counter_ >= 3) {
+        state_ = CatState::POUTING;
+        counter_ = 0;
+      }
+    }
+  }
+  last_interact_ = t;
+}
+
+std::string Cat::get_emoji() const {
+  if (state_ == CatState::NORMAL) {
     return u8"🐱";
-  } else if (state == CatState::SMILE) {
+  } else if (state_ == CatState::SMILE) {
     return u8"😺";
-  } else if (state == CatState::HAPPY) {
+  } else if (state_ == CatState::HAPPY) {
     return u8"😸";
-  } else if (state == CatState::KISSING) {
+  } else if (state_ == CatState::KISSING) {
     return u8"😽";
-  } else if (state == CatState::WRY) {
+  } else if (state_ == CatState::WRY) {
     return u8"😼";
-  } else if (state == CatState::POUTING) {
+  } else if (state_ == CatState::POUTING) {
     return u8"😾";
-  } else if (state == CatState::CRYING) {
+  } else if (state_ == CatState::CRYING) {
     return u8"😿";
   }
   return "";
 }
 
-void interact(Cat& cat) {
-  auto t = std::chrono::system_clock::now();
-  auto d = t - cat.last_interact;
-  if (d >= std::chrono::minutes(5)) {
-    cat.state = CatState::CRYING;
-    cat.counter = 0;
-  } else {
-    if (cat.state == CatState::NORMAL) {
-      if (++cat.counter >= 3) {
-        cat.state = CatState::SMILE;
-        cat.counter = 0;
-      }
-    } else if (cat.state == CatState::SMILE) {
-      if (++cat.counter >= 5) {
-        cat.state = CatState::HAPPY;
-        cat.counter = 0;
-      }
-    } else if (cat.state == CatState::HAPPY) {
-      if (++cat.counter >= 10) {
-        cat.state = CatState::KISSING;
-        cat.counter = 0;
-      }
-    } else if (cat.state == CatState::KISSING) {
-      if (++cat.counter >= 2) {
-        cat.state = CatState::NORMAL;
-        cat.counter = 0;
-      }
-    } else if (cat.state == CatState::WRY) {
-      if (++cat.counter >= 3) {
-        cat.state = CatState::NORMAL;
-        cat.counter = 0;
-      }
-    } else if (cat.state == CatState::POUTING) {
-      if (++cat.counter >= 3) {
-        cat.state = CatState::WRY;
-        cat.counter = 0;
-      }
-    } else if (cat.state == CatState::CRYING) {
-      if (++cat.counter >= 3) {
-        cat.state = CatState::POUTING;
-        cat.counter = 0;
-      }
-    }
+static Context context;
+
+int lua_clear_items(lua_State*) {
+  context.completion_items.clear();
+  return 0;
+}
+
+/**
+ * param1: list of items
+ * param2: client_id
+ * param3: bufnr
+ * param4: line (1-indexed)
+ * param5: col (1-indexed)
+ */
+int lua_insert_items(lua_State* L) {
+  std::lock_guard<std::mutex> lock(context.mutex);
+
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_pushvalue(L, 1);
+  std::vector<CompletionItem> items = parse_completion_items(L);
+  lua_pop(L, 1);
+
+  int client_id = luaL_checkint(L, 2);
+  int bufnr = luaL_checkint(L, 3);
+  int line = luaL_checkint(L, 4);
+  int col = luaL_checkint(L, 5);
+  CacheKey key{bufnr, line, col};
+  std::vector<CompletionItem>& completion_items = context.completion_items[key];
+  for (auto& item : items) {
+    item.client_id = client_id;
+    completion_items.push_back(std::move(item));
   }
-  cat.last_interact = t;
+  return 0;
 }
-
-Cat init_cat() {
-  return Cat{
-      .state = CatState::NORMAL,
-      .counter = 0,
-      .last_interact = std::chrono::system_clock::now(),
-  };
-}
-
-static Cat cat = init_cat();
-static Context context{cat};
 
 int lua_interact(lua_State*) {
-  interact(context.cat);
+  std::lock_guard<std::mutex> lock(context.mutex);
+  context.cat.Interact();
   return 0;
 }
 
 int lua_cat_emoji(lua_State* L) {
-  std::string emoji = get_emoji(context.cat.state);
+  std::string emoji = context.cat.get_emoji();
   lua_pushstring(L, emoji.c_str());
   return 1;
 }
 
-constexpr int DEFAULT_CACHE_SIZE = 100;
-using Cache = LFU<CacheKey, std::vector<CompletionItem>, HashCacheKey,
-                  DEFAULT_CACHE_SIZE>;
-static Cache cache;
+/**
+ * param1: bufnr
+ * param2: line (1-indexed)
+ * param3: col (1-indexed)
+ * param4: start (1-indexed)
+ * param5: edit distance option
+ */
+int lua_get_completion_items(lua_State* L) {
+  int bufnr = luaL_checkinteger(L, 1);
+  int line = luaL_checkinteger(L, 2);
+  int col = luaL_checkinteger(L, 3);
+  int start = luaL_checkinteger(L, 4);
+  luaL_checktype(L, 5, LUA_TTABLE);
 
-CacheKey parse_cache_key(lua_State* L) {
-  CacheKey key;
-  lua_getfield(L, -1, "bufnr");
-  key.bufnr = luaL_optinteger(L, -1, 0);
+  CacheKey key{bufnr, line, col};
+
+  lua_pushvalue(L, 5);
+  EditDistanceOption option = parse_edit_distance_option(L);
   lua_pop(L, 1);
 
-  lua_getfield(L, -1, "line");
-  key.line = luaL_optinteger(L, -1, 0);
-  lua_pop(L, 1);
+  std::vector<CompletionItem>& items = context.completion_items[key];
 
-  lua_getfield(L, -1, "col");
-  key.col = luaL_optinteger(L, -1, 0);
-  lua_pop(L, 1);
+  for (auto& item : items) {
+    std::string& text = get_text(item);
+    auto [dist, is_subseq] = edit_distance(text, option);
+    item.cost = compute_cost(text, dist, option);
+    item.is_subseq = is_subseq;
+  }
 
-  key.word =
-      get_optional_string(L, "word") ? *get_optional_string(L, "word") : "";
-  return key;
-}
+  if (!items.empty()) {
+    double max_cost = items[0].cost;
+    double min_cost = items[0].cost;
+    for (size_t i = 1; i < items.size(); ++i) {
+      max_cost = fmax(max_cost, items[i].cost);
+      min_cost = fmin(min_cost, items[i].cost);
+    }
+    double range = max_cost - min_cost;
+    for (size_t i = 0; i < items.size(); ++i) {
+      items[i].cost = (items[i].cost - min_cost) / range * MAX_STARS;
+    }
+  }
 
-int lua_put_cache_result(lua_State* L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  luaL_checktype(L, 2, LUA_TTABLE);
+  std::vector<CompletionItem> output;
+  for (auto& item : items) {
+    if (item.is_subseq) {
+      output.push_back(item);
+    }
+  }
 
-  lua_pushvalue(L, 1);
-  CacheKey key = parse_cache_key(L);
-  lua_pop(L, 1);
+  for (auto& item : output) {
+    if (!item.text_edit.has_value()) {
+      TextEdit te;
+      te.new_text = get_text(item);
+      Position s = {line-1, start-1};
+      Position e = {line-1, col};
+      te.range = Range{s, e};
+      item.text_edit = std::optional(te);
+    } else {
+      if (item.text_edit->range) {
+        item.text_edit->range->end.character = col;
+      }
+      if (item.text_edit->insert) {
+        item.text_edit->insert->end.character = col;
+      }
+      if (item.text_edit->replace) {
+        item.text_edit->replace->end.character = col;
+      }
+    }
+  }
 
-  lua_pushvalue(L, 2);
-  std::vector<CompletionItem> items = parse_completion_items(L);
-  lua_pop(L, 1);
+  std::sort(output.begin(), output.end(), CompareCompletionItem());
 
-  cache.put(key, std::move(items));
-  return 0;
-}
-
-int lua_get_cache_result(lua_State* L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-
-  lua_pushvalue(L, 1);
-  CacheKey key = parse_cache_key(L);
-  lua_pop(L, 1);
-
-  std::vector<CompletionItem> items = cache.get(key);
-  push_completion_items(L, items);
+  push_completion_items(L, output);
   return 1;
 }
 
-int lua_remove_cache_result(lua_State* L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
+/**
+ * param1: bufnr
+ * param2: line (1-indexed)
+ * param3: col (1-indexed)
+ */
 
-  lua_pushvalue(L, 1);
-  CacheKey key = parse_cache_key(L);
-  lua_pop(L, 1);
+int lua_has_cache(lua_State* L) {
+  int bufnr = luaL_checkinteger(L, 1);
+  int line = luaL_checkinteger(L, 2);
+  int col = luaL_checkinteger(L, 3);
 
-  cache.remove(key);
-  return 0;
-}
+  CacheKey key{bufnr, line, col};
 
-int lua_has_cache_value(lua_State* L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-
-  lua_pushvalue(L, 1);
-  CacheKey key = parse_cache_key(L);
-  lua_pop(L, 1);
-
-  bool has_value = cache.has_value(key);
+  bool has_value = context.completion_items.contains(key);
   lua_pushboolean(L, has_value);
   return 1;
 }
 
-int lua_clear_cache(lua_State*) {
-  cache.clear();
+int lua_clear_completion_items(lua_State*) {
+  context.completion_items.clear();
   return 0;
 }
 
@@ -874,7 +888,7 @@ int lua_format_completion_item(lua_State* L) {
 extern "C" int luaopen_paw(lua_State* L) {
   lua_newtable(L);
 
-  lua_pushcfunction(L, lua_trim);
+  lua_pushcfunction(L, lua_trim_long_text);
   lua_setfield(L, -2, "trim_long_text");
 
   lua_pushcfunction(L, lua_is_whitespace);
@@ -892,29 +906,23 @@ extern "C" int luaopen_paw(lua_State* L) {
   lua_pushcfunction(L, lua_find_trigger_context);
   lua_setfield(L, -2, "find_trigger_context");
 
-  lua_pushcfunction(L, lua_filter_and_sort);
-  lua_setfield(L, -2, "filter_and_sort");
-
   lua_pushcfunction(L, lua_interact);
   lua_setfield(L, -2, "interact");
 
   lua_pushcfunction(L, lua_cat_emoji);
   lua_setfield(L, -2, "cat_emoji");
 
-  lua_pushcfunction(L, lua_put_cache_result);
-  lua_setfield(L, -2, "put_cache_result");
+  lua_pushcfunction(L, lua_insert_items);
+  lua_setfield(L, -2, "insert_items");
 
-  lua_pushcfunction(L, lua_get_cache_result);
-  lua_setfield(L, -2, "get_cache_result");
+  lua_pushcfunction(L, lua_get_completion_items);
+  lua_setfield(L, -2, "get_completion_items");
 
-  lua_pushcfunction(L, lua_remove_cache_result);
-  lua_setfield(L, -2, "remove_cache_result");
+  lua_pushcfunction(L, lua_has_cache);
+  lua_setfield(L, -2, "has_cache");
 
-  lua_pushcfunction(L, lua_has_cache_value);
-  lua_setfield(L, -2, "has_cache_value");
-
-  lua_pushcfunction(L, lua_clear_cache);
-  lua_setfield(L, -2, "clear_cache");
+  lua_pushcfunction(L, lua_clear_completion_items);
+  lua_setfield(L, -2, "clear_completion_items");
 
   lua_pushcfunction(L, lua_get_stars);
   lua_setfield(L, -2, "get_stars");
