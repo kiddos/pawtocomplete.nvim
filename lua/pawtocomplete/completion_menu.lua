@@ -302,8 +302,13 @@ local function handle_select()
   end)
 end
 
+local function same_pos(p1, p2)
+  return p1[1] == p2[1] and p1[2] == p2[2]
+end
+
 local function setup_keymaps()
   local current_buf = api.nvim_get_current_buf()
+  local setup_pos = api.nvim_win_get_cursor(0)
 
   local config = context.config
   api.nvim_buf_set_keymap(current_buf, 'i', config.keymap.up, '', {
@@ -338,7 +343,8 @@ local function setup_keymaps()
     noremap = true,
     silent = true,
     callback = function()
-      if context.win and api.nvim_win_is_valid(context.win) then
+      local current_pos = api.nvim_win_get_cursor(0)
+      if context.win and api.nvim_win_is_valid(context.win) and same_pos(current_pos, setup_pos) then
         handle_select()
         return ''
       else
