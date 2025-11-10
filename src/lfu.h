@@ -1,8 +1,9 @@
 #ifndef LFU_H
 #define LFU_H
 
-#include <list>
 #include <absl/container/flat_hash_map.h>
+
+#include <list>
 
 template <typename T, typename U, typename F, int SIZE>
 class LFU {
@@ -28,13 +29,11 @@ class LFU {
     }
   }
 
-  bool has_value(const T& key) {
-    return cache_.count(key);
-  }
+  bool has_value(const T& key) { return cache_.count(key); }
 
-  U get(const T& key) {
+  U& get(const T& key) {
     if (!cache_.count(key)) {
-      return U{};
+      put(key, U{});
     }
     increase_use_count(key);
     return cache_[key].second->second;

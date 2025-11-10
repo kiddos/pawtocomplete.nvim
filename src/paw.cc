@@ -688,7 +688,8 @@ int lua_insert_items(lua_State* L) {
   int line = luaL_checkint(L, 4);
   int col = luaL_checkint(L, 5);
   CacheKey key{bufnr, line, col};
-  std::vector<CompletionItem>& completion_items = context.completion_items[key];
+
+  std::vector<CompletionItem>& completion_items = context.completion_items.get(key);
   for (auto& item : items) {
     item.client_id = client_id;
     completion_items.push_back(std::move(item));
@@ -728,7 +729,7 @@ int lua_get_completion_items(lua_State* L) {
   EditDistanceOption option = parse_edit_distance_option(L);
   lua_pop(L, 1);
 
-  std::vector<CompletionItem>& items = context.completion_items[key];
+  std::vector<CompletionItem>& items = context.completion_items.get(key);
 
   for (auto& item : items) {
     std::string& text = get_text(item);
@@ -789,7 +790,6 @@ int lua_get_completion_items(lua_State* L) {
  * param2: line (1-indexed)
  * param3: col (1-indexed)
  */
-
 int lua_has_cache(lua_State* L) {
   int bufnr = luaL_checkinteger(L, 1);
   int line = luaL_checkinteger(L, 2);
@@ -797,7 +797,7 @@ int lua_has_cache(lua_State* L) {
 
   CacheKey key{bufnr, line, col};
 
-  bool has_value = context.completion_items.contains(key);
+  bool has_value = context.completion_items.has_value(key);
   lua_pushboolean(L, has_value);
   return 1;
 }

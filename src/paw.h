@@ -10,6 +10,8 @@
 
 #include <absl/container/flat_hash_map.h>
 
+#include "lfu.h"
+
 enum CompletionItemKind {
   Text = 1,
   Method = 2,
@@ -135,11 +137,12 @@ struct HashCacheKey {
   }
 };
 
-constexpr int DEFAULT_CACHE_SIZE = 128;
+constexpr int DEFAULT_CACHE_SIZE = 32768;
 
 struct Context {
   std::mutex mutex;
-  absl::flat_hash_map<CacheKey, std::vector<CompletionItem>, HashCacheKey> completion_items;
+  LFU<CacheKey, std::vector<CompletionItem>, HashCacheKey, DEFAULT_CACHE_SIZE> completion_items;
+  // absl::flat_hash_map<CacheKey, std::vector<CompletionItem>, HashCacheKey> completion_items;
   Cat cat;
 };
 
