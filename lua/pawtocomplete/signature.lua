@@ -124,7 +124,7 @@ local function create_buffer(container, name)
   api.nvim_set_option_value('buftype', 'nofile', { buf = container.buffer })
 end
 
-M.show_signature_window = function()
+M.show_signature_window = util.debounce(function()
   if not context.lsp.result then
     return
   end
@@ -150,21 +150,20 @@ M.show_signature_window = function()
     end
   end
 
-  create_buffer(context.lsp, 'function-signature')
-  lsp.util.stylize_markdown(context.lsp.buffer, signatures, {})
-
   local cur_text = table.concat(lines, '\n')
   if context.lsp.window and cur_text == context.lsp.text then
     return
   end
 
-  util.close_action_window(context.lsp)
+  create_buffer(context.lsp, 'function-signature')
+  lsp.util.stylize_markdown(context.lsp.buffer, signatures, {})
+
   context.lsp.text = cur_text
   if fn.mode() == 'i' and #cur_text > 0 then
     local options = M.signature_window_options()
     util.open_action_window(context.lsp, options)
   end
-end
+end, config.signature.delay)
 
 M.stop_signature = function()
   util.close_action_window(context.lsp)

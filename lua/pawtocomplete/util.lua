@@ -19,7 +19,7 @@ end
 
 M.open_action_window = function(container, opts)
   if container.window then
-    M.close_action_window(container)
+    pcall(function() M.close_action_window(container) end)
   end
 
   local win = api.nvim_open_win(container.buffer, false, opts)
