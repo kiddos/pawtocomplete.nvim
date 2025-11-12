@@ -116,7 +116,7 @@ end
 
 local function create_buffer(container, name)
   if container.buffer then
-    return
+    api.nvim_buf_delete(container.buffer, { force = true })
   end
 
   container.buffer = api.nvim_create_buf(false, true)
@@ -158,10 +158,7 @@ M.show_signature_window = function()
     return
   end
 
-  if context.lsp.window then
-    util.close_action_window(context.lsp)
-  end
-
+  util.close_action_window(context.lsp)
   context.lsp.text = cur_text
   if fn.mode() == 'i' and #cur_text > 0 then
     local options = M.signature_window_options()
