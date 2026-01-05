@@ -103,7 +103,6 @@ local function apply_text_edit(item)
       api.nvim_win_set_cursor(0, { line, character + #text })
     end
   end
-
 end
 
 M.show_completion = function(start)
@@ -158,7 +157,28 @@ local function lsp_completion_request(client, bufnr, callback)
   end
 end
 
+local function can_trigger_completion(bufnr)
+  if not vim.bo[bufnr].modifiable then
+    return false
+  end
+
+  local bt = vim.bo[bufnr].buftype
+  if bt == 'nofile' or bt == 'prompt' or bt == 'terminal' then
+    return false
+  end
+
+  local clients = vim.lsp.get_clients({ bufnr = bufnr })
+  if #clients == 0 then
+    return false
+  end
+  return true
+end
+
 M.trigger_completion = util.debounce(function(bufnr)
+  if not can_trigger_completion(bufnr) then
+    return
+  end
+
   local clients = lsp.get_clients({ bufnr = bufnr })
 
   local current_line = api.nvim_get_current_line()
