@@ -50,22 +50,23 @@ local function create_popup()
   api.nvim_set_option_value('buftype', 'nofile', { buf = buf })
   api.nvim_set_option_value('filetype', 'PopupMenu', { buf = buf })
 
-  local config = context.config
-  local num_items = #context.items
-  local height = math.min(num_items, config.window.max_height)
-
-  local content_width = config.window.symbol_width + config.window.label_width + config.window.detail_width + 1
-  local content_height = height
   local win_width = api.nvim_win_get_width(0)
   local win_height = api.nvim_win_get_height(0)
+
+  local config = context.config
+  local num_items = #context.items
+  local screen_row = vim.fn.winline()
+  local content_height = math.min(num_items, config.window.max_height, win_height - 2)
+  local row = config.window.row
+  if screen_row + content_height > win_height then
+    row = - content_height - 1
+  end
+
+  local content_width = config.window.symbol_width + config.window.label_width + config.window.detail_width + 1
   local pos = api.nvim_win_get_cursor(0)
   local col = config.window.col
   if pos[2] + content_width > win_width then
     col = win_width - content_width
-  end
-  local row = config.window.row
-  if pos[1] + content_height > win_height then
-    row = - content_height - 1
   end
 
   local win = api.nvim_open_win(buf, false, {
