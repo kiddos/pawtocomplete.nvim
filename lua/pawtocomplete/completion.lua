@@ -158,12 +158,13 @@ local function lsp_completion_request(client, bufnr, callback)
 end
 
 local function can_trigger_completion(bufnr)
-  if not vim.bo[bufnr].modifiable then
+  local modifiable = api.nvim_get_option_value('modifiable', { buf = bufnr })
+  if not modifiable then
     return false
   end
 
-  local bt = vim.bo[bufnr].buftype
-  if bt == 'nofile' or bt == 'prompt' or bt == 'terminal' then
+  local buftype = api.nvim_get_option_value('buftype', { buf = bufnr })
+  if buftype == 'nofile' or buftype == 'prompt' or buftype == 'terminal' then
     return false
   end
 
