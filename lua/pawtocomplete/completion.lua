@@ -158,6 +158,11 @@ local function lsp_completion_request(client, bufnr, callback)
 end
 
 local function can_trigger_completion(bufnr)
+  local valid = api.nvim_buf_is_valid(bufnr)
+  if not valid then
+    return false
+  end
+
   local modifiable = api.nvim_get_option_value('modifiable', { buf = bufnr })
   if not modifiable then
     return false
