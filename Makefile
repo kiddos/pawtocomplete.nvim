@@ -3,7 +3,7 @@ TESTS_DIR=tests/
 
 all:
 	cmake -B build -DCMAKE_BUILD_TYPE=Release
-	make -C build
+	cmake --build build
 
 clean:
 	make -C build clean

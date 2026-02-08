@@ -1,8 +1,4 @@
-local get_script_dir = function()
-  return debug.getinfo(1).source:match('@?(.*/)')
-end
-
-local script_dir = get_script_dir()
+local script_dir = debug.getinfo(1).source:match('@?(.*/)')
 local target_dir = script_dir .. '../../'
 
 package.cpath = package.cpath
