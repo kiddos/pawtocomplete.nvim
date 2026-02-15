@@ -16,6 +16,10 @@ local config = {
     max_height = 6,
     delay = 100,
   },
+  walk = {
+    speed = 100,
+    step = 1,
+  },
 }
 
 M.merge_option = function(opt)
