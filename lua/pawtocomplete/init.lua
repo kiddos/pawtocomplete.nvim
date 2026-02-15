@@ -1,3 +1,4 @@
+local api = vim.api
 local M = {}
 
 M.setup = function(opts)
@@ -9,6 +10,15 @@ M.setup = function(opts)
 
   completion.setup()
   signature.setup()
+
+  api.nvim_create_user_command('PawWalk', function()
+    local conf = require('pawtocomplete.config').get_config()
+    require('pawtocomplete.walk').walk(conf.walk)
+  end, {})
+
+  api.nvim_create_user_command('PawStop', function()
+    require('pawtocomplete.walk').stop()
+  end, {})
 end
 
 return M
