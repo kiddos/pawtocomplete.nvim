@@ -77,22 +77,38 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(CLI11)
 
+set(JSONCPP_WITH_TESTS OFF CACHE BOOL "Disable jsoncpp test" FORCE)
+set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "Disable jsoncpp unittest" FORCE)
+set(JSONCPP_WITH_PKGCONFIG_SUPPORT OFF CACHE BOOL "Disable jsoncpp pkgconfig" FORCE)
+set(JSONCPP_WITH_EXAMPLE OFF CACHE BOOL "Disable jsoncpp example" FORCE)
+set(BUILD_OBJECT_LIBS OFF CACHE BOOL "Disable jsoncpp object libs" FORCE)
+FetchContent_Declare(
+  jsoncpp
+  GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
+  GIT_TAG        1.9.6
+  GIT_SHALLOW    TRUE
+  GIT_PROGRESS   TRUE
+)
+
+FetchContent_MakeAvailable(jsoncpp)
+
 glad_add_library(glad_gl_core_33 STATIC REPRODUCIBLE LOADER API gl:core=3.3)
 
 find_package(OpenGL REQUIRED)
 find_package(X11 REQUIRED)
 
-add_executable(paw_show_webp src/paw_show_webp.cc)
-target_include_directories(paw_show_webp PRIVATE ${CLI11_SOURCE_DIR}/include)
-target_compile_definitions(paw_show_webp
+add_executable(sparky src/sparky.cc)
+target_include_directories(sparky PRIVATE ${CLI11_SOURCE_DIR}/include)
+target_compile_definitions(sparky
   PRIVATE GLFW_EXPOSE_NATIVE_X11
 )
-target_link_libraries(paw_show_webp
+target_link_libraries(sparky
   PRIVATE
   glfw
   glad_gl_core_33
   OpenGL::GL
   webp
   webpdemux
+  jsoncpp_lib
   X11
 )

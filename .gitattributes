@@ -1,3 +1,10 @@
 images/paw1.webp filter=lfs diff=lfs merge=lfs -text
 images/paw2.webp filter=lfs diff=lfs merge=lfs -text
 images/paw3.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/happy1.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/idle1.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/idle2.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/idle3.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/naughty1.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/sleepy1.webp filter=lfs diff=lfs merge=lfs -text
+images/sparky/tired1.webp filter=lfs diff=lfs merge=lfs -text

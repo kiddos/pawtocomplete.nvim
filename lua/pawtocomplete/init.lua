@@ -6,9 +6,11 @@ M.setup = function(opts)
 
   local completion = require('pawtocomplete.completion')
   local signature = require('pawtocomplete.signature')
+  local sparky = require('pawtocomplete.sparky')
 
   completion.setup()
   signature.setup()
+  sparky.setup()
 end
 
 return M

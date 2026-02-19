@@ -7,7 +7,7 @@ local M = {}
 local config = require('pawtocomplete.config').get_config()
 local util = require('pawtocomplete.util')
 local paw = require('pawtocomplete.paw')
-local paw_show = require('paw_show')
+local sparky = require('pawtocomplete.sparky')
 local popup_menu = require('pawtocomplete.completion_menu')
 
 popup_menu.setup()
@@ -124,7 +124,8 @@ M.show_completion = function(start)
   local items = paw.get_completion_items(bufnr, pos[1], pos[2], start + 1, option)
   if fn.mode() == 'i' and #items > 0 then
     paw.interact()
-    paw_show.random_show()
+    sparky.update_emotion()
+    -- paw_show.random_show()
     popup_menu.open(items, {
       on_select = function(selected_item, _)
         apply_text_edit(selected_item)
