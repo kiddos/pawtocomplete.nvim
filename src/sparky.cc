@@ -176,9 +176,11 @@ struct Sprite {
   }
 
   void update_texture() {
-    auto buf = &frames[index].pixels[0];
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, buf);
+    if (index >= 0 && index < frames.size()) {
+      auto buf = &frames[index].pixels[0];
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+                   GL_UNSIGNED_BYTE, buf);
+    }
   }
 };
 
@@ -364,9 +366,16 @@ void process_rpc(Sparky& sparky, GLFWwindow* window) {
     last_rpc = glfwGetTime();
     if (reader->parse(json.c_str(), json.c_str() + json.length(), &value,
                       &err)) {
-      std::string method = value["method"].as<std::string>();
+      std::string method = "";
+      if (value.isMember("method") && value["method"].isString()) {
+        method = value["method"].asString();
+      }
+
       if (method == "emotion") {
-        std::string emotion = value["params"].as<std::string>();
+        std::string emotion = "";
+        if (value.isMember("params") && value["params"].isString()) {
+          emotion = value["params"].asString();
+        }
         std::cout << "next emotion: " << emotion << std::endl;
         if (emotion == "idle1") {
           sparky.idle1();
@@ -387,6 +396,34 @@ void process_rpc(Sparky& sparky, GLFWwindow* window) {
     } else {
       std::cerr << err << std::endl;
     }
+  }
+}
+
+static void cursor_enter_callback(GLFWwindow* window, int entered) {
+  if (entered) {
+    Json::Value value;
+    value["jsonrpc"] = "2.0";
+    value["method"] = "emotion";
+    value["params"] = "happy1";
+    std::ostringstream oss;
+    std::unique_ptr<Json::StreamWriter> writer(
+        Json::StreamWriterBuilder().newStreamWriter());
+    writer->write(value, &oss);
+
+    std::string command = oss.str();
+    std::cout << "detect cursor: " << command << std::endl;
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    rpc_queue.push(command);
+  }
+}
+
+static bool is_visible = true;
+
+static void window_iconify_callback(GLFWwindow* window, int iconified) {
+  if (iconified) {
+    is_visible = false;
+  } else {
+    is_visible = true;
   }
 }
 
@@ -415,10 +452,12 @@ int main(int argc, char* argv[]) {
   glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
   glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-  glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
+  // glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
   glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
   glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
   glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
+  glfwWindowHint(GLFW_CONTEXT_ROBUSTNESS, GLFW_LOSE_CONTEXT_ON_RESET);
+  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
   constexpr int window_size = 128;
   constexpr int margin = 20;
   int xpos = mode->width - window_size - margin;
@@ -440,6 +479,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+  glfwSetCursorEnterCallback(window, cursor_enter_callback);
+  glfwSetWindowIconifyCallback(window, window_iconify_callback);
 
   Sparky sparky(sprites_folder);
 
@@ -462,24 +503,25 @@ int main(int argc, char* argv[]) {
 
   double startTime = glfwGetTime();
   while (!glfwWindowShouldClose(window)) {
-    sparky.update();
     process_rpc(sparky, window);
 
-    glClear(GL_COLOR_BUFFER_BIT);
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glEnable(GL_TEXTURE_2D);
-    glUseProgram(shader_program);
-    glUniform1f(opacity_location, opacity);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    if (is_visible) {
+      sparky.update();
+      glClear(GL_COLOR_BUFFER_BIT);
+      glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+      glEnable(GL_TEXTURE_2D);
+      glUseProgram(shader_program);
+      glUniform1f(opacity_location, opacity);
+      glBindTexture(GL_TEXTURE_2D, texture);
+      glBindVertexArray(VAO);
+      glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-    glfwSwapBuffers(window);
-    glfwPollEvents();
-
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-      glfwSetWindowShouldClose(window, true);
+      glfwSwapBuffers(window);
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    glfwPollEvents();
   }
 
   rpc_running = false;
