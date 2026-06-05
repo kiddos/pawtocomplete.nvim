@@ -1,5 +1,6 @@
 local api = vim.api
 local lsp = vim.lsp
+local fn = vim.fn
 local paw = require('pawtocomplete.paw')
 
 local M = {}
@@ -18,8 +19,8 @@ local default_config = {
     max_height = 10,
     relative = 'cursor',
     style = 'minimal',
-    border = 'none',
-    zindex = 50,
+    border = 'rounded',
+    zindex = 1001,
     row = 1,
     col = 0
   },
@@ -59,7 +60,7 @@ local function create_popup()
   local content_height = math.min(num_items, config.window.max_height, win_height - 2)
   local row = config.window.row
   if screen_row + content_height > win_height then
-    row = - content_height - 1
+    row = -content_height - 1
   end
 
   local content_width = config.window.symbol_width + config.window.label_width + config.window.detail_width + 1
@@ -105,16 +106,31 @@ local function create_preview_window(_)
 
   local total = #context.items
   local current_selected = context.selected_idx
+  local item = context.items[current_selected]
   local emoji = paw.cat_emoji() or '🐱'
-  local stars = paw.get_stars(context.items[current_selected].cost)
-  local info = string.format('%-2s  %d/%d %s %.2f', emoji, current_selected, total, stars, context.items[current_selected].cost)
-  local lines = {info}
+  local stars = paw.get_stars(item.cost)
+
+  local cost_display = string.format("%.2f", item.cost)
+  local info = string.format(" %s  %d/%d  %s  Cost: %s", emoji, current_selected, total, stars, cost_display)
+  local lines = { info }
+
+  local doc = item.documentation
+  if doc then
+    table.insert(lines, string.rep('─', doc_width))
+    if type(doc) == 'table' then
+      doc = doc.value
+    end
+    for _, l in ipairs(vim.split(doc, '\n')) do
+      table.insert(lines, l)
+    end
+  end
+
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
   -- Calculate position (above or below the main popup)
   local popup_height = api.nvim_win_get_height(context.win)
   local popup_width = api.nvim_win_get_width(context.win)
-  local doc_height = math.min(#lines, 3)
+  local doc_height = math.min(#lines, 15) -- Max height for documentation
   local doc_width = popup_width
   local row = popup_height
 
@@ -122,45 +138,49 @@ local function create_preview_window(_)
     relative = 'win',
     win = context.win,
     row = row,
-    col = 0,
+    col = -1, -- Offset for border alignment
     width = doc_width,
     height = doc_height,
     style = 'minimal',
-    border = 'none',
-    zindex = context.config.window.zindex - 1
+    border = 'rounded',
+    zindex = context.config.window.zindex + 1
   })
   api.nvim_set_option_value('winhl', 'Normal:Pmenu,FloatBorder:PmenuBorder', { win = win })
+
+  if doc then
+    api.nvim_set_option_value('filetype', 'markdown', { buf = buf })
+  end
 
   context.preview_win = win
   context.preview_buf = buf
 end
 
 local hl_groups = {
-  'Normal', -- Text
-  'Function', -- Method
-  'Function', -- Function
-  'Type', -- Constructor
+  'Normal',     -- Text
+  'Function',   -- Method
+  'Function',   -- Function
+  'Type',       -- Constructor
   'Identifier', -- Field
   'Identifier', -- Variable
-  'Type', -- Class
-  'Type', -- Interface
-  'Keyword', -- Module
-  'Keyword', -- Property
-  'Constant', -- Unit
-  'Constant', -- Value
-  'Constant', -- Enum
-  'Keyword', -- Keyword
-  'Function', -- Snippet
-  'Constant', -- Color
-  'Type', -- File
-  'Function', -- Reference
-  'Directory', -- Folder
-  'Constant', -- EnumMember
-  'Constant', -- Constant
-  'Keyword', -- Struct
-  'Normal', -- Event
-  'Operator', -- Operator
-  'Type', -- TypeParameter
+  'Type',       -- Class
+  'Type',       -- Interface
+  'Keyword',    -- Module
+  'Keyword',    -- Property
+  'Constant',   -- Unit
+  'Constant',   -- Value
+  'Constant',   -- Enum
+  'Keyword',    -- Keyword
+  'Function',   -- Snippet
+  'Constant',   -- Color
+  'Type',       -- File
+  'Function',   -- Reference
+  'Directory',  -- Folder
+  'Constant',   -- EnumMember
+  'Constant',   -- Constant
+  'Keyword',    -- Struct
+  'Normal',     -- Event
+  'Operator',   -- Operator
+  'Type',       -- TypeParameter
 }
 
 
@@ -217,25 +237,47 @@ local function render_menu()
     -- table.insert(lines, string.format(' %s %-20s %20s', symbol, label, detail))
     table.insert(lines, line)
     local extra_byte = 3
+    -- Symbol highlighting
     table.insert(hl_commands, {
-      group = hl_groups[item.kind],
+      group = 'PawItemKind' .. (kind or 'Text'),
       line = i - 1,
       col_start = 0,
-      col_end = string.len(symbol),
+      col_end = config.window.symbol_width + 1,
     })
 
-    local offset = config.window.symbol_width + config.window.label_width + extra_byte
+    -- Label highlighting
+    local label_start = config.window.symbol_width + 3
+    table.insert(hl_commands, {
+      group = 'Normal',
+      line = i - 1,
+      col_start = label_start,
+      col_end = label_start + config.window.label_width,
+    })
+
+    -- Detail highlighting
+    local detail_start = label_start + config.window.label_width + 1
     table.insert(hl_commands, {
       group = 'Comment',
       line = i - 1,
-      col_start = offset,
-      col_end = offset + config.window.detail_width + extra_byte,
+      col_start = detail_start,
+      col_end = detail_start + config.window.detail_width,
     })
   end
 
-  api.nvim_win_set_width(context.win, content_width - 2)
+  api.nvim_win_set_width(context.win, content_width)
   api.nvim_buf_set_lines(context.buf, 0, -1, false, lines)
   api.nvim_buf_clear_namespace(context.buf, context.ns_id, 0, -1)
+
+  -- Create missing highlight groups
+  for _, kind_name in pairs(lsp.protocol.CompletionItemKind) do
+    if type(kind_name) == 'string' then
+      local hl_name = 'PawItemKind' .. kind_name
+      if fn.hlexists(hl_name) == 0 then
+        local base_hl = hl_groups[lsp.protocol.CompletionItemKind[kind_name]] or 'Normal'
+        api.nvim_set_hl(0, hl_name, { link = base_hl })
+      end
+    end
+  end
 
   for _, hl in ipairs(hl_commands) do
     vim.hl.range(
@@ -461,6 +503,17 @@ end
 
 M.is_opened = function()
   return context.win and api.nvim_win_is_valid(context.win)
+end
+
+M.refresh_preview = function()
+  if M.is_opened() then
+    vim.schedule(function()
+      local current_item = context.items[context.selected_idx]
+      if current_item then
+        create_preview_window(current_item)
+      end
+    end)
+  end
 end
 
 return M
