@@ -56,24 +56,25 @@ M.auto_signature = util.debounce(function()
   end
 end, config.signature.delay)
 
-M.get_signature_lines = function()
-  local lines = {}
-  local docs = {}
+M.get_signatures = function()
+  local signatures = {}
   for _, result in pairs(context.lsp.result) do
-    local signatures = result.signatures
-    if type(signatures) == 'table' then
-      for _, signature_help in pairs(signatures) do
-        local label = signature_help.label or ''
-        local document = signature_help.documentation
-        if document and type(document) == 'table' then
-          document = document.value or ''
+    if type(result.signatures) == 'table' then
+      for _, sig in pairs(result.signatures) do
+        local signature = {
+          label = sig.label or '',
+          documentation = sig.documentation,
+          activeParameter = sig.activeParameter or result.activeParameter or 0,
+          parameters = sig.parameters or {},
+        }
+        if type(signature.documentation) == 'table' then
+          signature.documentation = signature.documentation.value or ''
         end
-        table.insert(lines, label)
-        table.insert(docs, document)
+        table.insert(signatures, signature)
       end
     end
   end
-  return lines, docs
+  return signatures
 end
 
 M.signature_window_options = function()
@@ -129,34 +130,61 @@ M.show_signature_window = util.debounce(function()
     return
   end
 
-  local lines, docs = M.get_signature_lines()
-  if not lines or paw.is_whitespace(lines) then
+  local sigs = M.get_signatures()
+  if #sigs == 0 then
     return
   end
 
-  local signatures = {}
+  local markdown_lines = {}
   local bufnr = api.nvim_get_current_buf()
   local filetype = api.nvim_get_option_value('filetype', { buf = bufnr })
-  table.insert(signatures, string.format('```%s', filetype))
-  for _, line in ipairs(lines) do
-    table.insert(signatures, line)
+  table.insert(markdown_lines, string.format('```%s', filetype))
+  for _, sig in ipairs(sigs) do
+    table.insert(markdown_lines, sig.label)
   end
-  table.insert(signatures, '```')
+  table.insert(markdown_lines, '```')
 
-  if docs and not paw.is_whitespace(docs) then
-    table.insert(signatures, '')
-    for _, doc in pairs(docs) do
-      table.insert(signatures, doc)
+  for _, sig in ipairs(sigs) do
+    if sig.documentation and #sig.documentation > 0 then
+      table.insert(markdown_lines, '')
+      table.insert(markdown_lines, sig.documentation)
     end
   end
 
-  local cur_text = table.concat(lines, '\n')
+  local cur_text = table.concat(markdown_lines, '\n')
   if context.lsp.window and cur_text == context.lsp.text then
     return
   end
 
   create_buffer(context.lsp, 'function-signature')
-  lsp.util.stylize_markdown(context.lsp.buffer, signatures, {})
+  lsp.util.stylize_markdown(context.lsp.buffer, markdown_lines, {})
+
+  -- Highlight active parameters
+  -- The signatures start after the first match of ``` language
+  -- Usually line 2 (index 1)
+  local ns_id = api.nvim_create_namespace('pawtocomplete.signature_hl')
+  for i, sig in ipairs(sigs) do
+    local active_param_idx = sig.activeParameter
+    local params = sig.parameters
+    if params and params[active_param_idx + 1] then
+      local param = params[active_param_idx + 1]
+      local label = param.label
+      local start_col, end_col
+
+      if type(label) == 'table' then
+        start_col, end_col = label[1], label[2]
+      elseif type(label) == 'string' then
+        start_col, end_col = sig.label:find(label, 1, true)
+        if start_col then
+          start_col = start_col - 1 -- 0-indexed
+        end
+      end
+
+      if start_col and end_col then
+        api.nvim_buf_add_highlight(context.lsp.buffer, ns_id, 'LspSignatureActiveParameter', i, start_col, end_col)
+      end
+    end
+  end
 
   context.lsp.text = cur_text
   if fn.mode() == 'i' and #cur_text > 0 then

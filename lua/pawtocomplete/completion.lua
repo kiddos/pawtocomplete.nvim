@@ -113,6 +113,18 @@ M.show_completion = function(start)
       end,
       on_preview = function(item, _)
         extmark_at_cursor(item)
+        if not item.documentation then
+          local client = lsp.get_client_by_id(item.clientId)
+          if client and paw.table_get(client, { 'server_capabilities', 'completionProvider', 'resolveProvider' }) then
+            client.request('completionItem/resolve', item, function(err, resolved_item)
+              if not err and resolved_item then
+                item.documentation = resolved_item.documentation
+                item.detail = resolved_item.detail or item.detail
+                popup_menu.refresh_preview()
+              end
+            end)
+          end
+        end
       end
     })
   end
