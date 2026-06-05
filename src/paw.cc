@@ -181,6 +181,62 @@ int lua_table_get(lua_State* L) {
   return 1;
 }
 
+// Args: client (table), line_to_cursor (string)
+int lua_get_completion_start(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  luaL_checkstring(L, 2);
+
+  int start = -1;
+
+  lua_newtable(L);
+  lua_pushstring(L, "server_capabilities");
+  lua_rawseti(L, -2, 1);
+  lua_pushstring(L, "completionProvider");
+  lua_rawseti(L, -2, 2);
+  lua_pushstring(L, "triggerCharacters");
+  lua_rawseti(L, -2, 3);
+
+  // Call lua_table_get(client, keys)
+  lua_pushcfunction(L, lua_table_get);
+  lua_pushvalue(L, 1);
+  lua_pushvalue(L, 3);
+  lua_call(L, 2, 1);
+
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 2);
+    lua_pushnumber(L, start);
+    return 1;
+  }
+
+  luaL_checktype(L, -1, LUA_TTABLE);
+  int triggers_idx = lua_gettop(L);
+
+  lua_pushnil(L);  // first key for lua_next
+  while (lua_next(L, triggers_idx) != 0) {
+    const char* trigger_char = lua_tostring(L, -1);
+
+    if (trigger_char) {
+      lua_pushcfunction(L, lua_find_last_trigger_index);
+      lua_pushvalue(L, 2);   // line_to_cursor
+      lua_pushvalue(L, -3);  // trigger_char (value)
+      lua_call(L, 2, 1);     // stack: ..., triggers, key, value, result
+
+      if (!lua_isnil(L, -1)) {
+        int result = (int)lua_tonumber(L, -1);
+        // completion should trigger at trigger character + 1
+        int candidate = result + 1;
+        if (candidate > start) start = candidate;
+      }
+      lua_pop(L, 1);
+    }
+
+    lua_pop(L, 1);
+  }
+
+  lua_pushnumber(L, start);
+  return 1;
+}
+
 CompletionItemKind get_completion_item_kind(lua_State* L, const char* key) {
   lua_getfield(L, -1, key);
   CompletionItemKind kind =
@@ -592,8 +648,10 @@ int lua_find_trigger_context(lua_State* L) {
   return 1;
 }
 
-Cat::Cat() : state_(CatState::NORMAL), counter_(0), last_interact_(std::chrono::system_clock::now()) {
-}
+Cat::Cat()
+    : state_(CatState::NORMAL),
+      counter_(0),
+      last_interact_(std::chrono::system_clock::now()) {}
 
 void Cat::Interact() {
   auto t = std::chrono::system_clock::now();
@@ -689,7 +747,8 @@ int lua_insert_items(lua_State* L) {
   int col = luaL_checkint(L, 5);
   CacheKey key{bufnr, line, col};
 
-  std::vector<CompletionItem>& completion_items = context.completion_items.get(key);
+  std::vector<CompletionItem>& completion_items =
+      context.completion_items.get(key);
   for (auto& item : items) {
     item.client_id = client_id;
     completion_items.push_back(std::move(item));
@@ -762,8 +821,8 @@ int lua_get_completion_items(lua_State* L) {
     if (!item.text_edit.has_value()) {
       TextEdit te;
       te.new_text = get_text(item);
-      Position s = {line-1, start-1};
-      Position e = {line-1, col};
+      Position s = {line - 1, start - 1};
+      Position e = {line - 1, col};
       te.range = Range{s, e};
       item.text_edit = std::optional(te);
     } else {
@@ -841,10 +900,9 @@ std::string format_completion_item(const std::string& symbol,
                                    const std::string& detail,
                                    size_t symbol_width, size_t label_width,
                                    size_t detail_width) {
-  return absl::StrFormat(" %*s  %-*s %*s",
-                         symbol_width, symbol,
-                         label_width, abbreviate(label, label_width-3),
-                         detail_width, abbreviate(detail, detail_width));
+  return absl::StrFormat(" %*s  %-*s %*s", symbol_width, symbol, label_width,
+                         abbreviate(label, label_width - 3), detail_width,
+                         abbreviate(detail, detail_width));
 }
 
 int lua_format_completion_item(lua_State* L) {
@@ -899,6 +957,9 @@ extern "C" int luaopen_paw(lua_State* L) {
 
   lua_pushcfunction(L, lua_find_last_trigger_index);
   lua_setfield(L, -2, "find_last_trigger_index");
+
+  lua_pushcfunction(L, lua_get_completion_start);
+  lua_setfield(L, -2, "get_completion_start");
 
   lua_pushcfunction(L, lua_table_get);
   lua_setfield(L, -2, "table_get");

@@ -17,22 +17,6 @@ local context = {
   ns_id = api.nvim_create_namespace("pawtocomplete.completion"),
 }
 
-local function get_completion_start(client, line_to_cursor)
-  local start = -1
-  local triggers = paw.table_get(client, { 'server_capabilities', 'completionProvider', 'triggerCharacters' })
-  if triggers then
-    for _, trigger_char in pairs(triggers) do
-      local result = paw.find_last_trigger_index(line_to_cursor, trigger_char)
-      if result ~= nil then
-        -- the result is 0-index based
-        -- completion should trigger at trigger character + 1
-        start = math.max(start, result + 1)
-      end
-    end
-  end
-  return start
-end
-
 local function find_completion_base_word(start)
   if start <= 0 then
     return nil
@@ -195,7 +179,7 @@ M.trigger_completion = util.debounce(function(bufnr)
 
   local start = -1
   for _, client in pairs(clients) do
-    local s = get_completion_start(client, line_to_cursor)
+    local s = paw.get_completion_start(client, line_to_cursor)
     start = math.max(start, s)
   end
 
