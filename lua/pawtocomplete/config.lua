@@ -19,7 +19,7 @@ local config = {
 }
 
 M.merge_option = function(opt)
-  config = vim.tbl_extend('force', config, opt)
+  config = vim.tbl_deep_extend('force', config, opt)
 end
 
 M.get_config = function()
