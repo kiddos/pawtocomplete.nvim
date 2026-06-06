@@ -502,7 +502,7 @@ function M.select(idx)
 end
 
 M.is_opened = function()
-  return context.win and api.nvim_win_is_valid(context.win)
+  return context.win ~= nil and api.nvim_win_is_valid(context.win)
 end
 
 M.refresh_preview = function()
