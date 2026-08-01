@@ -57,10 +57,10 @@ local function create_popup()
   local config = context.config
   local num_items = #context.items
   local screen_row = vim.fn.winline()
-  local content_height = math.min(num_items, config.window.max_height, win_height - 2)
+  local content_height = math.min(num_items + 2, config.window.max_height, win_height - 2)
   local row = config.window.row
   if screen_row + content_height > win_height then
-    row = -content_height - 1
+    row = -content_height - 1 - 3
   end
 
   local content_width = config.window.symbol_width + config.window.label_width + config.window.detail_width + 1
