@@ -806,7 +806,7 @@ int lua_get_completion_items(lua_State* L) {
     }
     double range = max_cost - min_cost;
     for (size_t i = 0; i < items.size(); ++i) {
-      items[i].cost = (items[i].cost - min_cost) / range * MAX_STARS;
+      items[i].cost = (items[i].cost - min_cost) / (range + 1e-6) * MAX_STARS;
     }
   }
 
