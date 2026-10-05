@@ -27,19 +27,34 @@ local function find_completion_base_word(start)
   end
 end
 
+local function get_col_from_item(item)
+  local keys = {'range', 'insert', 'replace'}
+  for _, key in pairs(keys) do
+    local character = paw.table_get(item, { 'textEdit', key, 'start', 'character' })
+    if character then
+      return character
+    end
+  end
+  return nil
+end
+
 local function extmark_at_cursor(item)
   -- local text = item.insertText or item.label
   local text = item.filterText or item.insertText or item.label
-  local character = paw.table_get(item, { 'textEdit', 'range', 'start', 'character' })
   local bufnr = api.nvim_get_current_buf()
   local row = api.nvim_win_get_cursor(0)[1]
+  local col = get_col_from_item(item)
+  print(col)
+  if not col then
+    return
+  end
 
   if context.preview_id then
     api.nvim_buf_del_extmark(bufnr, context.ns_id, context.preview_id)
     context.preview_id = nil
   end
 
-  context.preview_id = api.nvim_buf_set_extmark(bufnr, context.ns_id, row - 1, character, {
+  context.preview_id = api.nvim_buf_set_extmark(bufnr, context.ns_id, row - 1, col, {
     virt_text = { { text, "Normal" } },
     virt_text_pos = 'overlay',
     priority = 10,
@@ -116,13 +131,14 @@ M.show_completion = function(start)
         if not item.documentation then
           local client = lsp.get_client_by_id(item.clientId)
           if client and paw.table_get(client, { 'server_capabilities', 'completionProvider', 'resolveProvider' }) then
-            client.request('completionItem/resolve', item, function(err, resolved_item)
+            local handler = function(err, resolved_item)
               if not err and resolved_item then
                 item.documentation = resolved_item.documentation
                 item.detail = resolved_item.detail or item.detail
                 popup_menu.refresh_preview()
               end
-            end)
+            end
+            client:request('completionItem/resolve', item, handler, 0)
           end
         end
       end
@@ -132,7 +148,7 @@ end
 
 local function lsp_completion_request(client, bufnr, callback)
   if context.request_ids[client.id] then
-    client.cancel_request(context.request_ids[client.id])
+    client:cancel_request(context.request_ids[client.id])
     context.request_ids[client.id] = nil
   end
 
@@ -147,7 +163,7 @@ local function lsp_completion_request(client, bufnr, callback)
     end
   end
 
-  local result, request_id = client.request('textDocument/completion', params, handler, bufnr)
+  local result, request_id = client:request('textDocument/completion', params, handler, bufnr)
   if result then
     context.request_ids[client.id] = request_id
   end
