@@ -28,7 +28,7 @@ local function find_completion_base_word(start)
 end
 
 local function get_col_from_item(item)
-  local keys = {'range', 'insert', 'replace'}
+  local keys = { 'range', 'insert', 'replace' }
   for _, key in pairs(keys) do
     local character = paw.table_get(item, { 'textEdit', key, 'start', 'character' })
     if character then
@@ -73,33 +73,56 @@ local function extmark_at_cursor(item)
   })
 end
 
+local function parse_completion_edit(edit)
+  if not edit then
+    return nil
+  end
+
+  local range = edit.insert or edit.replace or edit.range
+  if not range or not range.start then
+    return nil
+  end
+
+  return {
+    range = range,
+    line = range.start.line + 1, -- Convert 0-indexed LSP line to 1-indexed Neovim line
+    character = range.start.character,
+    newText = edit.newText or "",
+  }
+end
+
 local function apply_text_edit(item)
   local text_edit = paw.table_get(item, { 'textEdit' })
-  if not text_edit then
+  local parsed = parse_completion_edit(text_edit)
+  if not parsed then
     return
   end
 
-  local character = paw.table_get(text_edit, { 'range', 'start', 'character' })
-  local line = paw.table_get(text_edit, { 'range', 'start', 'line' }) + 1
   local cursor = api.nvim_win_get_cursor(0)
-  if line ~= cursor[1] then
+  if parsed.line ~= cursor[1] then
     return
   end
 
   local bufnr = api.nvim_get_current_buf()
-  if item.insertTextFormat == 2 then
-    local current_line = api.nvim_get_current_line()
-    local before = current_line:sub(1, character)
-    api.nvim_set_current_line(before)
-    api.nvim_win_set_cursor(0, { line, character })
+  local is_snippet = item.insertTextFormat == 2 -- 2 = Snippet format in LSP specs
 
-    local snippet = paw.table_get(text_edit, { 'newText' })
-    vim.snippet.expand(snippet)
+  if is_snippet then
+    local current_line = api.nvim_get_current_line()
+    local before = current_line:sub(1, parsed.character)
+
+    api.nvim_set_current_line(before)
+    api.nvim_win_set_cursor(0, { parsed.line, parsed.character })
+
+    vim.snippet.expand(parsed.newText)
   else
-    lsp.util.apply_text_edits({ text_edit }, bufnr, 'utf-8')
-    local text = paw.table_get(text_edit, { 'newText' })
-    if text then
-      api.nvim_win_set_cursor(0, { line, character + #text })
+    local normalized_edit = {
+      range = parsed.range,
+      newText = parsed.newText,
+    }
+
+    lsp.util.apply_text_edits({ normalized_edit }, bufnr, 'utf-8')
+    if #parsed.newText > 0 then
+      api.nvim_win_set_cursor(0, { parsed.line, parsed.character + #parsed.newText })
     end
   end
 end
