@@ -170,14 +170,21 @@ M.show_completion = function(start)
 end
 
 local function lsp_completion_request(client, bufnr, callback)
-  if context.request_ids[client.id] then
-    client:cancel_request(context.request_ids[client.id])
+  local prev_request_id = context.request_ids[client.id]
+  if prev_request_id then
     context.request_ids[client.id] = nil
+    if client.requests and client.requests[prev_request_id] then
+      client:cancel_request(prev_request_id)
+    end
   end
 
   local offset_encoding = client.offset_encoding or 'utf-16'
   local params = lsp.util.make_position_params(0, offset_encoding)
+  local req_id
   local handler = function(err, client_result, _)
+    if context.request_ids[client.id] == req_id then
+      context.request_ids[client.id] = nil
+    end
     if not err then
       local items = paw.table_get(client_result, { 'items' }) or client_result
       if items then
@@ -188,6 +195,7 @@ local function lsp_completion_request(client, bufnr, callback)
 
   local result, request_id = client:request('textDocument/completion', params, handler, bufnr)
   if result then
+    req_id = request_id
     context.request_ids[client.id] = request_id
   end
 end
@@ -262,7 +270,9 @@ M.stop_completion = function()
   for client_id, request_id in pairs(context.request_ids) do
     local client = lsp.get_client_by_id(client_id)
     if client and request_id then
-      client:cancel_request(request_id)
+      if client.requests and client.requests[request_id] then
+        client:cancel_request(request_id)
+      end
       context.request_ids[client_id] = nil
     end
   end
