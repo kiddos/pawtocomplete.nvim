@@ -44,7 +44,6 @@ local function extmark_at_cursor(item)
   local bufnr = api.nvim_get_current_buf()
   local row = api.nvim_win_get_cursor(0)[1]
   local col = get_col_from_item(item)
-  print(col)
   if not col then
     return
   end
