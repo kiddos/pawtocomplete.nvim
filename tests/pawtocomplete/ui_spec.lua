@@ -55,4 +55,16 @@ describe('completion_menu', function()
     assert.is_nil(win)
     assert.is_false(menu.is_opened())
   end)
+
+  it('handles items with documentation', function()
+    local items = {
+      { label = 'item1', kind = 1, cost = 0, documentation = 'Some documentation' },
+      { label = 'item2', kind = 1, cost = 0, documentation = { value = 'Markdown documentation' } },
+    }
+    local buf, win = menu.open(items, {})
+    assert.is_not_nil(buf)
+    assert.is_not_nil(win)
+    assert.is_true(api.nvim_win_is_valid(win))
+    assert.is_true(menu.is_opened())
+  end)
 end)

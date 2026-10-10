@@ -114,6 +114,9 @@ local function create_preview_window(_)
   local info = string.format(" %s  %d/%d  %s  Cost: %s", emoji, current_selected, total, stars, cost_display)
   local lines = { info }
 
+  local popup_width = api.nvim_win_get_width(context.win)
+  local doc_width = popup_width
+
   local doc = item.documentation
   if doc then
     table.insert(lines, string.rep('─', doc_width))
@@ -129,9 +132,7 @@ local function create_preview_window(_)
 
   -- Calculate position (above or below the main popup)
   local popup_height = api.nvim_win_get_height(context.win)
-  local popup_width = api.nvim_win_get_width(context.win)
   local doc_height = math.min(#lines, 15) -- Max height for documentation
-  local doc_width = popup_width
   local row = popup_height
 
   local win = api.nvim_open_win(buf, false, {
