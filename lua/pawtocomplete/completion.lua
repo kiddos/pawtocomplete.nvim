@@ -82,10 +82,14 @@ local function parse_completion_edit(edit)
     return nil
   end
 
+  local end_range = range['end']
+
   return {
     range = range,
     line = range.start.line + 1, -- Convert 0-indexed LSP line to 1-indexed Neovim line
     character = range.start.character,
+    end_line = end_range and end_range.line and (end_range.line + 1) or nil,
+    end_character = end_range and end_range.character or nil,
     newText = edit.newText or "",
   }
 end
@@ -108,11 +112,24 @@ local function apply_text_edit(item)
   if is_snippet then
     local current_line = api.nvim_get_current_line()
     local before = current_line:sub(1, parsed.character)
+    local end_col = cursor[2]
+    if parsed.end_character and (not parsed.end_line or parsed.end_line == parsed.line) then
+      end_col = parsed.end_character
+    end
+    if end_col < parsed.character then
+      end_col = parsed.character
+    end
+    local after = current_line:sub(end_col + 1)
 
-    api.nvim_set_current_line(before)
+    local orig_ve = vim.o.virtualedit
+    vim.o.virtualedit = 'onemore'
+    api.nvim_set_current_line(before .. after)
     api.nvim_win_set_cursor(0, { parsed.line, parsed.character })
-
-    vim.snippet.expand(parsed.newText)
+    local ok, err = pcall(vim.snippet.expand, parsed.newText)
+    vim.o.virtualedit = orig_ve
+    if not ok then
+      error(err)
+    end
   else
     local normalized_edit = {
       range = parsed.range,
@@ -125,6 +142,8 @@ local function apply_text_edit(item)
     end
   end
 end
+
+M.apply_text_edit = apply_text_edit
 
 M.show_completion = function(start)
   local base_word = find_completion_base_word(start + 1)
@@ -284,7 +303,7 @@ M.auto_complete = function()
 end
 
 M.setup = function()
-  api.nvim_create_autocmd({ 'InsertCharPre' }, {
+  api.nvim_create_autocmd({ 'TextChangedI' }, {
     callback = M.auto_complete
   })
 
