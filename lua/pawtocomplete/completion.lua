@@ -17,6 +17,8 @@ local context = {
   ns_id = api.nvim_create_namespace("pawtocomplete.completion"),
 }
 
+local resolved_items = setmetatable({}, { __mode = 'k' })
+
 local function find_completion_base_word(start)
   if start <= 0 then
     return nil
@@ -108,10 +110,9 @@ local function apply_text_edit(item)
 
   local bufnr = api.nvim_get_current_buf()
   local is_snippet = item.insertTextFormat == 2 -- 2 = Snippet format in LSP specs
+  local additional_edits = item.additionalTextEdits
 
   if is_snippet then
-    local current_line = api.nvim_get_current_line()
-    local before = current_line:sub(1, parsed.character)
     local end_col = cursor[2]
     if parsed.end_character and (not parsed.end_line or parsed.end_line == parsed.line) then
       end_col = parsed.end_character
@@ -119,11 +120,29 @@ local function apply_text_edit(item)
     if end_col < parsed.character then
       end_col = parsed.character
     end
+
+    if additional_edits and #additional_edits > 0 then
+      local mark_id = api.nvim_buf_set_extmark(bufnr, context.ns_id, parsed.line - 1, parsed.character, {
+        right_gravity = true,
+      })
+      lsp.util.apply_text_edits(additional_edits, bufnr, 'utf-8')
+      local mark_pos = api.nvim_buf_get_extmark_by_id(bufnr, context.ns_id, mark_id, {})
+      api.nvim_buf_del_extmark(bufnr, context.ns_id, mark_id)
+      if #mark_pos == 2 then
+        local col_delta = mark_pos[2] - parsed.character
+        parsed.line = mark_pos[1] + 1
+        parsed.character = mark_pos[2]
+        end_col = end_col + col_delta
+      end
+    end
+
+    local current_line = api.nvim_buf_get_lines(bufnr, parsed.line - 1, parsed.line, false)[1] or ''
+    local before = current_line:sub(1, parsed.character)
     local after = current_line:sub(end_col + 1)
 
     local orig_ve = vim.o.virtualedit
     vim.o.virtualedit = 'onemore'
-    api.nvim_set_current_line(before .. after)
+    api.nvim_buf_set_lines(bufnr, parsed.line - 1, parsed.line, false, { before .. after })
     api.nvim_win_set_cursor(0, { parsed.line, parsed.character })
     local ok, err = pcall(vim.snippet.expand, parsed.newText)
     vim.o.virtualedit = orig_ve
@@ -135,15 +154,41 @@ local function apply_text_edit(item)
       range = parsed.range,
       newText = parsed.newText,
     }
+    local edits = { normalized_edit }
+    local mark_id
+    if additional_edits and #additional_edits > 0 then
+      vim.list_extend(edits, additional_edits)
+      local end_line = parsed.end_line or parsed.line
+      local end_col = parsed.end_character or parsed.character
+      mark_id = api.nvim_buf_set_extmark(bufnr, context.ns_id, end_line - 1, end_col, {
+        right_gravity = true,
+      })
+    end
 
-    lsp.util.apply_text_edits({ normalized_edit }, bufnr, 'utf-8')
-    if #parsed.newText > 0 then
+    lsp.util.apply_text_edits(edits, bufnr, 'utf-8')
+    if mark_id then
+      local mark_pos = api.nvim_buf_get_extmark_by_id(bufnr, context.ns_id, mark_id, {})
+      api.nvim_buf_del_extmark(bufnr, context.ns_id, mark_id)
+      if #parsed.newText > 0 and #mark_pos == 2 then
+        api.nvim_win_set_cursor(0, { mark_pos[1] + 1, mark_pos[2] })
+      end
+    elseif #parsed.newText > 0 then
       api.nvim_win_set_cursor(0, { parsed.line, parsed.character + #parsed.newText })
     end
   end
 end
 
 M.apply_text_edit = apply_text_edit
+
+local function make_resolve_params(item)
+  local params = {}
+  for k, v in pairs(item) do
+    if k ~= 'clientId' and k ~= 'cost' then
+      params[k] = v
+    end
+  end
+  return params
+end
 
 M.show_completion = function(start)
   local base_word = find_completion_base_word(start + 1)
@@ -169,17 +214,25 @@ M.show_completion = function(start)
       end,
       on_preview = function(item, _)
         extmark_at_cursor(item)
-        if not item.documentation then
+        if not resolved_items[item] and not item.documentation then
           local client = lsp.get_client_by_id(item.clientId)
           if client and paw.table_get(client, { 'server_capabilities', 'completionProvider', 'resolveProvider' }) then
+            resolved_items[item] = true
             local handler = function(err, resolved_item)
-              if not err and resolved_item then
-                item.documentation = resolved_item.documentation
-                item.detail = resolved_item.detail or item.detail
+              if err then
+                resolved_items[item] = nil
+                return
+              end
+              if resolved_item then
+                for k, v in pairs(resolved_item) do
+                  if k ~= 'clientId' and k ~= 'cost' then
+                    item[k] = v
+                  end
+                end
                 popup_menu.refresh_preview()
               end
             end
-            client:request('completionItem/resolve', item, handler, 0)
+            client:request('completionItem/resolve', make_resolve_params(item), handler, 0)
           end
         end
       end

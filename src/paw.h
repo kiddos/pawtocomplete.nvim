@@ -3,10 +3,13 @@
 
 #include <chrono>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
-#include <mutex>
 
 #include <absl/container/flat_hash_map.h>
 
@@ -63,6 +66,17 @@ struct TextEdit {
   std::optional<Range> replace;
 };
 
+struct LuaTable;
+
+struct LuaNull {};
+
+using LuaVariant = std::variant<LuaNull, bool, double, std::string,
+                                std::shared_ptr<LuaTable>>;
+
+struct LuaTable {
+  std::vector<std::pair<LuaVariant, LuaVariant>> entries;
+};
+
 struct CompletionItem {
   std::string label;
   std::optional<CompletionItemKind> kind;
@@ -72,6 +86,7 @@ struct CompletionItem {
   std::optional<std::string> insert_text;
   std::optional<int> insert_text_format;
   std::optional<TextEdit> text_edit;
+  std::vector<std::pair<std::string, LuaVariant>> extra_fields;
   int client_id;
   double cost;
   bool is_subseq;

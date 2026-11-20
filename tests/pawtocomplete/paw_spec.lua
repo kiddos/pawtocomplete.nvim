@@ -157,6 +157,7 @@ describe('paw', function()
   end)
 
   it('filter_and_sort', function()
+    paw.clear_completion_items()
     local completion_items = {
       {
         label = 'text',
@@ -237,6 +238,114 @@ describe('paw', function()
 
     context = paw.find_trigger_context({ '.' }, 'hello.world', 5 + 1)
     assert(context == nil)
+
+    assert(paw.find_trigger_context({ '.' }, 'hello.', -1) == nil)
+    assert(paw.find_trigger_context({ '.' }, 'hello.', 6) == nil)
+    assert(paw.find_trigger_context({ '.' }, 'hello.', 100) == nil)
+    assert(paw.find_trigger_context({ '' }, 'hello.', 6) == nil)
+  end)
+
+  it('edit_distance decays position weight smoothly', function()
+    paw.clear_completion_items()
+    local items = {
+      { label = 'xabcef', kind = 1 },
+      { label = 'xabefc', kind = 1 },
+    }
+    paw.insert_items(items, 1, 10, 1, 1)
+
+    local option = {
+      keyword = 'abef',
+      insert_cost = 1,
+      delete_cost = 1,
+      substitude_cost = 2,
+      max_cost = 2.5,
+    }
+    local output = paw.get_completion_items(10, 1, 1, 1, option)
+    assert(#output == 2)
+    assert(output[1].label == 'xabefc')
+    assert(output[2].label == 'xabcef')
+    assert(output[1].cost < output[2].cost)
+  end)
+
+  it('longest_common_prefix is case-insensitive', function()
+    paw.clear_completion_items()
+    local items = {
+      { label = 'fXoo', kind = 1 },
+      { label = 'FooX', kind = 1 },
+    }
+    paw.insert_items(items, 1, 11, 1, 1)
+
+    local option = {
+      keyword = 'foo',
+      insert_cost = 1,
+      delete_cost = 1,
+      substitude_cost = 2,
+      max_cost = 2.5,
+    }
+    local output = paw.get_completion_items(11, 1, 1, 1, option)
+    assert(#output == 2)
+    assert(output[1].label == 'FooX')
+    assert(output[2].label == 'fXoo')
+    assert(output[1].cost < output[2].cost)
+  end)
+
+  it('get_stars maps normalized cost [0, 5] to 5..0 stars', function()
+    assert(paw.get_stars(0) == '⭐⭐⭐⭐⭐')
+    assert(paw.get_stars(1) == '⭐⭐⭐⭐')
+    assert(paw.get_stars(2) == '⭐⭐⭐')
+    assert(paw.get_stars(3) == '⭐⭐')
+    assert(paw.get_stars(4) == '⭐')
+    assert(paw.get_stars(5) == '')
+    assert(paw.get_stars(-1) == '⭐⭐⭐⭐⭐')
+    assert(paw.get_stars(6) == '')
+  end)
+
+  it('preserves extra LSP fields across insert_items and get_completion_items', function()
+    paw.clear_completion_items()
+    local items = {
+      {
+        label = 'foo',
+        kind = 3,
+        data = {
+          entryNames = { 'foo', 'bar' },
+          file = '/tmp/test.ts',
+          resolved = false,
+          index = 42,
+          nullable = vim.NIL,
+        },
+        documentation = {
+          kind = 'markdown',
+          value = 'Test documentation',
+        },
+        additionalTextEdits = {
+          {
+            range = {
+              start = { line = 0, character = 0 },
+              ['end'] = { line = 0, character = 0 },
+            },
+            newText = "import { foo } from './foo'\n",
+          },
+        },
+        tags = { 1 },
+      },
+    }
+    paw.insert_items(items, 7, 12, 1, 2)
+
+    local option = {
+      keyword = 'f',
+      insert_cost = 1,
+      delete_cost = 1,
+      substitude_cost = 2,
+      max_cost = 2.5,
+    }
+    local output = paw.get_completion_items(12, 1, 2, 1, option)
+    assert(#output == 1)
+    local item = output[1]
+    assert.are.same(items[1].data, item.data)
+    assert.are.same(items[1].documentation, item.documentation)
+    assert.are.same(items[1].additionalTextEdits, item.additionalTextEdits)
+    assert.are.same(items[1].tags, item.tags)
+    assert.are.equal(7, item.clientId)
   end)
 
   it('cat', function()

@@ -8,6 +8,10 @@ extern "C" {
 #include <absl/strings/str_format.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <string_view>
 #include <vector>
 
 #include "paw.h"
@@ -313,6 +317,111 @@ std::optional<TextEdit> get_optional_text_edit(lua_State* L, const char* key) {
   return edit;
 }
 
+constexpr int kMaxLuaValueDepth = 64;
+
+bool is_vim_nil(lua_State* L, int idx) {
+  int abs_idx = (idx < 0) ? (lua_gettop(L) + idx + 1) : idx;
+  lua_getglobal(L, "vim");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return false;
+  }
+  lua_getfield(L, -1, "NIL");
+  bool eq = !lua_isnil(L, -1) && lua_rawequal(L, abs_idx, -1) != 0;
+  lua_pop(L, 2);
+  return eq;
+}
+
+void push_vim_nil(lua_State* L) {
+  lua_getglobal(L, "vim");
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "NIL");
+    if (!lua_isnil(L, -1)) {
+      lua_remove(L, -2);
+      return;
+    }
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+  lua_pushnil(L);
+}
+
+std::optional<LuaVariant> parse_lua_value(lua_State* L, int idx, int depth) {
+  if (depth > kMaxLuaValueDepth) {
+    return std::nullopt;
+  }
+  int abs_idx = (idx < 0) ? (lua_gettop(L) + idx + 1) : idx;
+  switch (lua_type(L, abs_idx)) {
+    case LUA_TBOOLEAN:
+      return LuaVariant(lua_toboolean(L, abs_idx) != 0);
+    case LUA_TNUMBER:
+      return LuaVariant(static_cast<double>(lua_tonumber(L, abs_idx)));
+    case LUA_TSTRING: {
+      size_t len = 0;
+      const char* s = lua_tolstring(L, abs_idx, &len);
+      return LuaVariant(std::string(s, len));
+    }
+    case LUA_TUSERDATA:
+    case LUA_TLIGHTUSERDATA:
+      if (is_vim_nil(L, abs_idx)) {
+        return LuaVariant(LuaNull{});
+      }
+      return std::nullopt;
+    case LUA_TTABLE: {
+      if (!lua_checkstack(L, 4)) {
+        return std::nullopt;
+      }
+      auto table = std::make_shared<LuaTable>();
+      lua_pushnil(L);
+      while (lua_next(L, abs_idx) != 0) {
+        auto key = parse_lua_value(L, -2, depth + 1);
+        auto val = parse_lua_value(L, -1, depth + 1);
+        if (key && val) {
+          table->entries.emplace_back(std::move(*key), std::move(*val));
+        }
+        lua_pop(L, 1);
+      }
+      return LuaVariant(std::move(table));
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+void push_lua_value(lua_State* L, const LuaVariant& var) {
+  std::visit(
+      [L](const auto& v) {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, LuaNull>) {
+          push_vim_nil(L);
+        } else if constexpr (std::is_same_v<T, bool>) {
+          lua_pushboolean(L, v ? 1 : 0);
+        } else if constexpr (std::is_same_v<T, double>) {
+          lua_pushnumber(L, v);
+        } else if constexpr (std::is_same_v<T, std::string>) {
+          lua_pushlstring(L, v.data(), v.size());
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<LuaTable>>) {
+          lua_checkstack(L, 4);
+          lua_newtable(L);
+          if (v) {
+            for (const auto& [k, elem] : v->entries) {
+              push_lua_value(L, k);
+              push_lua_value(L, elem);
+              lua_settable(L, -3);
+            }
+          }
+        }
+      },
+      var);
+}
+
+bool is_handled_completion_field(std::string_view key) {
+  return key == "label" || key == "kind" || key == "detail" ||
+         key == "sortText" || key == "filterText" || key == "insertText" ||
+         key == "insertTextFormat" || key == "textEdit" ||
+         key == "clientId" || key == "cost";
+}
+
 CompletionItem parse_completion_item(lua_State* L) {
   CompletionItem item;
   auto label = get_optional_string(L, "label");
@@ -324,6 +433,23 @@ CompletionItem parse_completion_item(lua_State* L) {
   item.insert_text = get_optional_string(L, "insertText");
   item.insert_text_format = get_optional_int(L, "insertTextFormat");
   item.text_edit = get_optional_text_edit(L, "textEdit");
+
+  int table_idx = lua_gettop(L);
+  lua_pushnil(L);
+  while (lua_next(L, table_idx) != 0) {
+    if (lua_type(L, -2) == LUA_TSTRING) {
+      size_t key_len = 0;
+      const char* key_ptr = lua_tolstring(L, -2, &key_len);
+      std::string_view key(key_ptr, key_len);
+      if (!is_handled_completion_field(key)) {
+        auto val = parse_lua_value(L, -1, 0);
+        if (val) {
+          item.extra_fields.emplace_back(std::string(key), std::move(*val));
+        }
+      }
+    }
+    lua_pop(L, 1);
+  }
   return item;
 }
 
@@ -379,6 +505,11 @@ void push_text_edit(lua_State* L, const TextEdit& edit) {
 
 void push_completion_item(lua_State* L, const CompletionItem& item) {
   lua_newtable(L);
+  for (const auto& [key, val] : item.extra_fields) {
+    lua_pushlstring(L, key.data(), key.size());
+    push_lua_value(L, val);
+    lua_settable(L, -3);
+  }
   lua_pushstring(L, item.label.c_str());
   lua_setfield(L, -2, "label");
   if (item.kind) {
@@ -484,8 +615,8 @@ CompletionParam parse_completion_param(lua_State* L) {
   return param;
 }
 
-std::pair<int, bool> edit_distance(const std::string& s1,
-                                   const EditDistanceOption& option) {
+std::pair<double, bool> edit_distance(const std::string& s1,
+                                      const EditDistanceOption& option) {
   const std::string& s2 = option.keyword;
   const int insert_cost = option.insert_cost;
   const int delete_cost = option.delete_cost;
@@ -494,17 +625,20 @@ std::pair<int, bool> edit_distance(const std::string& s1,
   const size_t len1 = s1.length();
   const size_t len2 = s2.length();
 
-  std::vector<int> dp(len2 + 1);
-  std::vector<int> next_dp(len2 + 1);
+  std::vector<double> dp(len2 + 1);
+  std::vector<double> next_dp(len2 + 1);
   for (size_t j = 0; j <= len2; ++j) {
-    dp[j] = j * insert_cost;
+    dp[j] = static_cast<double>(j * insert_cost);
   }
 
+  const double max_len = static_cast<double>(std::max(len1, len2));
   for (size_t i = 1; i <= len1; ++i) {
-    next_dp[0] = i * delete_cost;
+    next_dp[0] = static_cast<double>(i * delete_cost);
     for (size_t j = 1; j <= len2; ++j) {
-      int weight = option.alpha * (1 - std::min(i, j) / std::max(len1, len2));
-      if (tolower(s1[i - 1]) == tolower(s2[j - 1])) {
+      double weight = option.alpha *
+                      (1.0 - static_cast<double>(std::min(i, j)) / max_len);
+      if (std::tolower(static_cast<unsigned char>(s1[i - 1])) ==
+          std::tolower(static_cast<unsigned char>(s2[j - 1]))) {
         next_dp[j] = dp[j - 1];
       } else {
         next_dp[j] =
@@ -518,7 +652,8 @@ std::pair<int, bool> edit_distance(const std::string& s1,
   bool is_subseq = false;
   if (len2 > 0) {
     for (size_t i = 0, j = 0; i < len1; ++i) {
-      if (tolower(s1[i]) == tolower(s2[j])) {
+      if (std::tolower(static_cast<unsigned char>(s1[i])) ==
+          std::tolower(static_cast<unsigned char>(s2[j]))) {
         j++;
       }
       if (j == len2) {
@@ -589,15 +724,16 @@ void set_text_edit(std::vector<CompletionItem>& items, CompletionParam& param) {
 int longest_common_prefix(const std::string& s1, const std::string& s2) {
   int n = std::min(s1.length(), s2.length());
   for (int i = 0; i < n; ++i) {
-    if (s1[i] != s2[i]) {
+    if (std::tolower(static_cast<unsigned char>(s1[i])) !=
+        std::tolower(static_cast<unsigned char>(s2[i]))) {
       return i;
     }
   }
   return n;
 }
 
-double compute_cost(const std::string& text, int dist,
-                    EditDistanceOption& option) {
+double compute_cost(const std::string& text, double dist,
+                    const EditDistanceOption& option) {
   if (option.keyword.length() == 0 && text.length() == 0) {
     return std::numeric_limits<int>::max();
   }
@@ -606,7 +742,8 @@ double compute_cost(const std::string& text, int dist,
   double P = longest_common_prefix(text, option.keyword);
   double W = std::max(option.keyword.length(), text.length());
   int L = option.keyword.length();
-  double cost = (double)dist / (W * C) - (L == 0 ? 0 : option.beta * (P / L)) +
+  double dist_term = (W * C == 0) ? 0.0 : dist / (W * C);
+  double cost = dist_term - (L == 0 ? 0 : option.beta * (P / L)) +
                 (option.gamma * text.length() / W);
   return cost;
 }
@@ -615,7 +752,13 @@ int lua_find_trigger_context(lua_State* L) {
   if (lua_istable(L, 1)) {
     std::string line = luaL_checkstring(L, 2);
     int start = luaL_checkint(L, 3);
-    const char c = start >= 0 ? line[start] : '\0';
+    const char c =
+        (start >= 0 && static_cast<size_t>(start) < line.size()) ? line[start]
+                                                                 : '\0';
+    if (c == '\0') {
+      lua_pushnil(L);
+      return 1;
+    }
 
     lua_pushnil(L);
 
@@ -868,13 +1011,12 @@ int lua_clear_completion_items(lua_State*) {
 
 int lua_get_stars(lua_State* L) {
   double cost = luaL_checknumber(L, 1);
-  double p = (1.0 - cost) * 5;
+  double p = static_cast<double>(MAX_STARS) - cost;
+  int num_stars = std::clamp(static_cast<int>(std::round(p)), 0, MAX_STARS);
   std::string star = "⭐";
   std::string stars;
-  int i = 0;
-  while (i <= p) {
+  for (int i = 0; i < num_stars; ++i) {
     stars += star;
-    i++;
   }
 
   lua_pushstring(L, stars.c_str());
